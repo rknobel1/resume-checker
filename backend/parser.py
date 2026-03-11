@@ -280,6 +280,21 @@ def parse_resume(resume_text: str) -> Dict:
     return {
         "normalized_text": normalized,
         "sections": sections,
+
+        # new fields expected by scoring.py
+        "summary": summary_text,
+        "skills_text": skills_text,
+        "experience_text": experience_text,
+        "projects_text": projects_text,
+        "education_text": education_text,
+        "certifications_text": certifications_text,
+        "section_completeness": 80.0,   # placeholder for now
+        "email": "",                    # placeholder for now
+        "has_tables": False,
+        "has_images": False,
+        "current_or_recent_title": "",
+
+        # existing fields
         "experience_bullets": experience_bullets,
         "project_bullets": project_bullets,
         "all_bullets": experience_bullets + project_bullets,
