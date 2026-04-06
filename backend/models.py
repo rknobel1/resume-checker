@@ -113,10 +113,49 @@ class Requirement(BaseModel):
             "technologies": "tool",
             "framework": "tool",
             "frameworks": "tool",
-            "soft_skill": "skill"
+            "soft_skill": "skill",
         }
 
-        return aliases.get(v, v)
+        # normalize obvious alias first
+        v = aliases.get(v, v)
+
+        allowed = {
+            "skill",
+            "tool",
+            "responsibility",
+            "domain",
+            "education",
+            "certification",
+            "experience",
+        }
+
+        if v in allowed:
+            return v
+
+        # Handle combined labels like "experience|skill" or "domain/responsibility"
+        parts = re.split(r"[|/,;]+", v)
+        parts = [aliases.get(p.strip(), p.strip()) for p in parts if p.strip()]
+        parts = [p for p in parts if p in allowed]
+
+        if not parts:
+            return "skill"
+
+        # Prefer the more concrete / ATS-useful label
+        priority = [
+            "experience",
+            "education",
+            "certification",
+            "tool",
+            "skill",
+            "responsibility",
+            "domain",
+        ]
+
+        for p in priority:
+            if p in parts:
+                return p
+
+        return parts[0]
 
 
 class JobDescriptionStructured(BaseModel):

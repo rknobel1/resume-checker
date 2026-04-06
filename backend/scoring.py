@@ -464,7 +464,7 @@ def score_resume_against_jd(resume_data: Dict, job_description: str) -> ScoreBre
                     if best_text is not None and semantic_score >= 0.55:
                         matched = True
                         best_evidence = best_text
-                        evidence = classify_evidence_strength(best_text, req.text)
+                        evidence = classify_evidence_strength(best_text, req.text, semantic_score)
 
             else:
                 # For normal requirements, search across the whole resume
@@ -472,7 +472,7 @@ def score_resume_against_jd(resume_data: Dict, job_description: str) -> ScoreBre
                 if best_text is not None and semantic_score >= 0.55:
                     matched = True
                     best_evidence = best_text
-                    evidence = classify_evidence_strength(best_text, req.text)
+                    evidence = classify_evidence_strength(best_text, req.text, semantic_score)
 
         req_score = (semantic_score * 100.0 * 0.6) + ((evidence / 5.0) * 100.0 * 0.4)
         req_score = round(req_score, 2) if matched else 0.0

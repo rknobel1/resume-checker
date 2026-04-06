@@ -52,4 +52,23 @@ Return ONLY valid JSON.
 
     response = ask_ollama(prompt)
     data = _safe_json_loads(response)
+
+    # defensive cleanup before pydantic validation
+    reqs = data.get("requirements", [])
+    cleaned = []
+    for req in reqs:
+        if not isinstance(req, dict):
+            continue
+
+        req = dict(req)
+
+        if "category" not in req or not req["category"]:
+            req["category"] = "skill"
+
+        if "importance" not in req or req["importance"] not in {"required", "preferred"}:
+            req["importance"] = "required"
+
+        cleaned.append(req)
+
+    data["requirements"] = cleaned
     return JobDescriptionStructured(**data)
