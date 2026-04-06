@@ -12,6 +12,9 @@ from models import (
     PlanModeResponse,
     WeakBullet,
     DebugInfo,
+    ParsedProjectEntry,
+    ParsedExperienceEntry,
+    ParsedResumeSummary,
 )
 from parser import parse_resume, parse_job_description
 from scoring import score_resume_against_jd
@@ -106,6 +109,108 @@ def analyze_weak_bullets(resume_data: dict):
     return weak_bullets, weak_bullet_details, bullet_reasons
 
 
+def build_parsed_resume_summary(resume_data: dict) -> ParsedResumeSummary:
+    experience_groups_raw = resume_data.get("experience_groups", []) or []
+    project_groups_raw = resume_data.get("project_groups", []) or []
+
+    experience_groups = [
+        ParsedResumeEntry(
+            section=group.get("section", "experience"),
+            header=group.get("header", "Experience Entry"),
+            subheader=group.get("subheader"),
+            bullets=[b for b in (group.get("bullets", []) or []) if b and b.strip()],
+        )
+        for group in experience_groups_raw
+    ]
+
+    project_groups = [
+        ParsedResumeEntry(
+            section=group.get("section", "projects"),
+            header=group.get("header", "Projects Entry"),
+            subheader=group.get("subheader"),
+            bullets=[b for b in (group.get("bullets", []) or []) if b and b.strip()],
+        )
+        for group in project_groups_raw
+    ]
+
+    parser_notes = []
+    used_fallback_grouping = False
+
+    synthetic_headers = {
+        "Experience Entry 1",
+        "Projects Entry 1",
+    }
+
+    if any(g.header in synthetic_headers for g in experience_groups + project_groups):
+        used_fallback_grouping = True
+        parser_notes.append(
+            "Some entries may have been grouped using fallback headers because the parser could not confidently detect all role or project headers."
+        )
+
+    sections_found = list((resume_data.get("sections") or {}).keys())
+
+    if not experience_groups and (resume_data.get("experience_text") or "").strip():
+        parser_notes.append("Experience text was found, but no structured experience groups were extracted.")
+
+    if not project_groups and (resume_data.get("projects_text") or "").strip():
+        parser_notes.append("Project text was found, but no structured project groups were extracted.")
+
+    return ParsedResumeSummary(
+        summary_text=resume_data.get("summary", "") or "",
+        skills=resume_data.get("skills", []) or [],
+        sections_found=sections_found,
+        experience_groups=experience_groups,
+        project_groups=project_groups,
+        education_text=resume_data.get("education_text", "") or "",
+        certifications_text=resume_data.get("certifications_text", "") or "",
+        experience_group_count=len(experience_groups),
+        project_group_count=len(project_groups),
+        used_fallback_grouping=used_fallback_grouping,
+        parser_notes=parser_notes,
+    )
+
+
+def build_parsed_resume_summary(resume_data: dict) -> ParsedResumeSummary:
+    projects = [
+        ParsedProjectEntry(
+            title=group.get("title", "") or "Untitled Project",
+            metadata=group.get("metadata"),
+            tech_stack=group.get("tech_stack"),
+            bullets=[b for b in (group.get("bullets", []) or []) if b and b.strip()],
+        )
+        for group in (resume_data.get("project_groups", []) or [])
+    ]
+
+    experience = [
+        ParsedExperienceEntry(
+            organization=group.get("organization"),
+            role=group.get("role", "") or "Experience Entry",
+            dates=group.get("dates"),
+            bullets=[b for b in (group.get("bullets", []) or []) if b and b.strip()],
+        )
+        for group in (resume_data.get("experience_groups", []) or [])
+    ]
+
+    notes = []
+    if not projects and (resume_data.get("projects_text") or "").strip():
+        notes.append("Project text was found, but no structured projects were extracted.")
+    if not experience and (resume_data.get("experience_text") or "").strip():
+        notes.append("Experience text was found, but no structured experience entries were extracted.")
+
+    return ParsedResumeSummary(
+        summary_text=resume_data.get("summary", "") or "",
+        skills=resume_data.get("skills", []) or [],
+        sections_found=list((resume_data.get("sections") or {}).keys()),
+        projects=projects,
+        experience=experience,
+        education_text=resume_data.get("education_text", "") or "",
+        certifications_text=resume_data.get("certifications_text", "") or "",
+        project_count=len(projects),
+        experience_count=len(experience),
+        parser_notes=notes,
+    )
+
+
 def build_analyze_response(resume_text: str, job_description: str) -> AnalyzeResponse:
     resume_data = parse_resume(resume_text)
     jd_debug = parse_job_description(job_description)
@@ -128,12 +233,15 @@ def build_analyze_response(resume_text: str, job_description: str) -> AnalyzeRes
         jd_all_skills=jd_debug.get("all_skills", []),
     )
 
+    parsed_resume = build_parsed_resume_summary(resume_data)
+
     return AnalyzeResponse(
         score_breakdown=score_result,
         missing_keywords=score_result.missing_required + score_result.missing_preferred,
         weak_bullets=weak_bullets,
         weak_bullet_details=weak_bullet_details,
         suggestions=suggestions,
+        parsed_resume=parsed_resume,
         debug=debug,
     )
 

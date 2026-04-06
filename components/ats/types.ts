@@ -44,12 +44,40 @@ export type Suggestion = {
   confidence: number;
 };
 
+export type ParsedProjectEntry = {
+  title: string;
+  metadata?: string | null;
+  tech_stack?: string | null;
+  bullets: string[];
+};
+
+export type ParsedExperienceEntry = {
+  organization?: string | null;
+  role: string;
+  dates?: string | null;
+  bullets: string[];
+};
+
+export type ParsedResumeSummary = {
+  summary_text: string;
+  skills: string[];
+  sections_found: string[];
+  projects: ParsedProjectEntry[];
+  experience: ParsedExperienceEntry[];
+  education_text: string;
+  certifications_text: string;
+  project_count: number;
+  experience_count: number;
+  parser_notes: string[];
+};
+
 export type AnalyzeResponse = {
   score_breakdown: ScoreBreakdown;
   missing_keywords: string[];
   weak_bullets: string[];
   weak_bullet_details: WeakBullet[];
   suggestions: Suggestion[];
+  parsed_resume?: ParsedResumeSummary | null;
   debug?: {
     resume_skills: string[];
     jd_required_skills: string[];

@@ -1,5 +1,5 @@
 import re
-from typing import Dict, List, Tuple, Set
+from typing import Dict, List, Tuple, Set, Optional
 
 
 SECTION_ALIASES = {
@@ -44,7 +44,6 @@ SECTION_ALIASES = {
     ],
 }
 
-# canonical skill -> aliases
 SKILL_ALIASES = {
     "python": ["python"],
     "javascript": ["javascript", "js"],
@@ -106,31 +105,23 @@ DATE_HINT_RE = re.compile(
     re.IGNORECASE,
 )
 
-HEADER_SEP_RE = re.compile(r"\s+\|\s+|\s+·\s+|\s+•\s+")
-ALL_CAPS_RE = re.compile(r"^[A-Z0-9][A-Z0-9\s&/,\-().]+$")
+TECH_STACK_TOKEN_HINTS = {
+    "python", "pytorch", "tensorflow", "keras", "numpy", "pandas",
+    "react", "nextjs", "next.js", "typescript", "javascript",
+    "node", "node.js", "express", "fastapi", "sql", "postgres",
+    "mongodb", "docker", "kubernetes", "aws", "webgl", "pixijs",
+    "pixi.js", "wasm", "cuda", "tkinter", "onnx", "onnxruntime",
+    "framer", "prettymidi", "qml", "c", "c++", "cpp", "java"
+}
 
 
 def normalize_text(text: str) -> str:
-    """
-    Better normalization for pasted / PDF-extracted text.
-    """
     text = text.replace("\r\n", "\n").replace("\r", "\n")
-
-    # Remove hyphenated line breaks: manage-\nment -> management
     text = re.sub(r"(\w)-\n(\w)", r"\1\2", text)
-
-    # Merge likely broken words across newlines: Py\nthon -> Python
     text = re.sub(r"(?<=[A-Za-z])\n(?=[a-z])", "", text)
-
-    # Normalize bullet characters
     text = text.replace("▪", "•").replace("◦", "•").replace("‣", "•")
-
-    # Collapse internal spaces/tabs
     text = re.sub(r"[ \t]+", " ", text)
-
-    # Keep line structure but remove excessive blank lines
     text = re.sub(r"\n{3,}", "\n\n", text)
-
     return text.strip()
 
 
@@ -140,11 +131,9 @@ def split_lines(text: str) -> List[str]:
 
 def _canonical_section_header(line: str) -> str | None:
     cleaned = re.sub(r"[:\-\s]+$", "", line.strip().lower())
-
     for canonical, aliases in SECTION_ALIASES.items():
         if cleaned in aliases:
             return canonical
-
     return None
 
 
@@ -179,15 +168,94 @@ def _is_bullet_line(line: str) -> bool:
     return bool(BULLET_START_RE.match(line.strip()))
 
 
-def _looks_like_entry_header(line: str) -> bool:
-    """
-    Heuristic for company/project header lines.
-    We want to catch lines like:
-      Software Engineer | Acme | 2023 - Present
-      Resume Checker App
-      University Research Project
-    but avoid treating ordinary sentences as headers.
-    """
+def _looks_like_tech_stack_line(line: str) -> bool:
+    line = line.strip()
+    if not line or _is_bullet_line(line):
+        return False
+
+    if "," not in line:
+        return False
+
+    parts = [p.strip().lower() for p in line.split(",") if p.strip()]
+    if len(parts) < 2:
+        return False
+
+    tech_hits = 0
+    for part in parts:
+        tokens = [t for t in re.split(r"[/\s]+", part) if t]
+        if part in TECH_STACK_TOKEN_HINTS or any(tok in TECH_STACK_TOKEN_HINTS for tok in tokens):
+            tech_hits += 1
+
+    return tech_hits >= max(2, len(parts) // 2)
+
+
+def _looks_like_metadata_line(line: str) -> bool:
+    low = line.lower().strip()
+    if not low:
+        return False
+
+    metadata_words = [
+        "hackathon",
+        "place",
+        "award",
+        "solo",
+        "team",
+        "web application",
+        "mobile application",
+        "desktop application",
+        "research project",
+        "genai project",
+        "ai project",
+        "internship project",
+        "capstone",
+    ]
+
+    if any(word in low for word in metadata_words):
+        return True
+
+    if DATE_HINT_RE.search(line):
+        return True
+
+    # catches things like: "Hackathon 2022 - 2nd place"
+    if re.search(r"\b\d{4}\b", line) and any(word in low for word in ["hackathon", "place", "award"]):
+        return True
+
+    return False
+
+
+def _split_inline_title_and_metadata(line: str) -> Tuple[str, Optional[str]]:
+    line = line.strip()
+    if not line:
+        return "", None
+
+    # Split things like:
+    # "My Portfolio Web Application"
+    # "Learning Music through Machine Learning Solo GenAI Project"
+    # "Anime Recommendation System Hackathon 2022 - 2nd place"
+    # "Fractal Simulator Solo Research Project"
+    patterns = [
+        r"^(.*?)(Hackathon.*)$",
+        r"^(.*?)(Solo\s+GenAI\s+Project.*)$",
+        r"^(.*?)(Solo\s+Research\s+Project.*)$",
+        r"^(.*?)(Research\s+Project.*)$",
+        r"^(.*?)(Web\s+Application.*)$",
+        r"^(.*?)(Mobile\s+Application.*)$",
+        r"^(.*?)(Desktop\s+Application.*)$",
+        r"^(.*?)(Capstone.*)$",
+    ]
+
+    for pattern in patterns:
+        m = re.match(pattern, line, re.IGNORECASE)
+        if m:
+            title = m.group(1).strip()
+            metadata = m.group(2).strip()
+            if title:
+                return title, metadata
+
+    return line, None
+
+
+def _looks_like_project_title(line: str) -> bool:
     line = line.strip()
     if not line:
         return False
@@ -195,134 +263,179 @@ def _looks_like_entry_header(line: str) -> bool:
     if _is_bullet_line(line):
         return False
 
-    low = line.lower()
+    if _looks_like_tech_stack_line(line):
+        return False
 
-    # obvious date-heavy experience headers
-    if DATE_HINT_RE.search(line):
-        return True
+    # allow lines that contain inline metadata like
+    # "Anime Recommendation System Hackathon 2022 - 2nd place"
+    title_part, _ = _split_inline_title_and_metadata(line)
+    check_line = title_part.strip() if title_part.strip() else line
 
-    # common separators in resume headers
-    if HEADER_SEP_RE.search(line):
-        return True
+    if _looks_like_metadata_line(check_line):
+        return False
 
-    # short title-like lines often introduce projects
-    words = line.split()
-    if 1 <= len(words) <= 8:
-        title_case_ratio = sum(1 for w in words if w[:1].isupper()) / max(len(words), 1)
-        if title_case_ratio >= 0.6:
-            return True
+    words = check_line.split()
+    if not words:
+        return False
 
-    # all-caps headers sometimes appear in resumes
-    if ALL_CAPS_RE.match(line) and len(words) <= 8:
-        return True
+    # titles should be relatively short
+    if len(words) > 12:
+        return False
 
-    # fallback: short line with no terminal punctuation often behaves like a header
-    if len(words) <= 8 and not re.search(r"[.!?]$", line):
-        capitalized = sum(1 for w in words if w[:1].isupper())
-        if capitalized >= max(1, len(words) - 1):
-            return True
+    stopwords = {
+        "and", "or", "of", "in", "for", "to", "with", "through", "on", "at", "by", "the", "a", "an"
+    }
 
-    return False
+    alpha_words = [w for w in words if re.search(r"[A-Za-z]", w)]
+    if not alpha_words:
+        return False
+
+    strong_words = []
+    for w in alpha_words:
+        cleaned = re.sub(r"[^A-Za-z0-9+#.-]", "", w)
+        if not cleaned:
+            continue
+        low = cleaned.lower()
+        if low in stopwords:
+            continue
+        strong_words.append(cleaned)
+
+    if not strong_words:
+        return False
+
+    capitalized_or_special = 0
+    for w in strong_words:
+        if w[:1].isupper() or any(ch.isdigit() for ch in w) or "+" in w or "#" in w:
+            capitalized_or_special += 1
+
+    return capitalized_or_special >= max(1, len(strong_words) - 1)
 
 
-def extract_bullet_groups(section_text: str, section_name: str) -> List[Dict]:
-    """
-    Split a section into grouped entries like:
-    [
-      {
-        "section": "experience",
-        "header": "Software Engineer | Acme | 2023 - Present",
-        "bullets": ["Built ...", "Optimized ..."]
-      },
-      ...
-    ]
-
-    Fallback behavior:
-    - If no clear headers are found, bullets are grouped into one synthetic entry.
-    """
+def extract_project_groups(section_text: str) -> List[Dict]:
     if not section_text.strip():
         return []
 
     lines = split_lines(section_text)
     groups: List[Dict] = []
+    i = 0
 
-    current_header = ""
-    current_bullets: List[str] = []
-    current_bullet_parts: List[str] = []
-    saw_any_header = False
+    while i < len(lines):
+        line = lines[i].strip()
 
-    def flush_bullet():
-        nonlocal current_bullet_parts, current_bullets
-        if current_bullet_parts:
-            current_bullets.append(" ".join(current_bullet_parts).strip())
-            current_bullet_parts = []
-
-    def flush_group():
-        nonlocal current_header, current_bullets
-        flush_bullet()
-        if current_bullets:
-            groups.append({
-                "section": section_name,
-                "header": current_header.strip() or f"{section_name.title()} Entry {len(groups) + 1}",
-                "bullets": [b for b in current_bullets if b.strip()],
-            })
-        current_bullets = []
-
-    for line in lines:
-        bullet_match = BULLET_START_RE.match(line)
-
-        if bullet_match:
-            current_bullet_text = bullet_match.group(2).strip()
-            flush_bullet()
-            current_bullet_parts = [current_bullet_text]
+        if not line:
+            i += 1
             continue
 
-        # continuation line for current bullet
-        if current_bullet_parts and not _looks_like_entry_header(line):
-            current_bullet_parts.append(line.strip())
+        # skip stray bullets before a title
+        if _is_bullet_line(line):
+            i += 1
             continue
 
-        # possible new entry header
-        if _looks_like_entry_header(line):
-            saw_any_header = True
-            flush_group()
-            current_header = line.strip()
+        # require an actual project-title-like line to start a group
+        if not _looks_like_project_title(line):
+            i += 1
             continue
 
-        # non-bullet, non-header line:
-        # if we are inside a bullet, treat as continuation; otherwise append to header
-        if current_bullet_parts:
-            current_bullet_parts.append(line.strip())
-        else:
-            if current_header:
-                current_header = f"{current_header} {line.strip()}".strip()
+        title_line = line
+        metadata = None
+        tech_stack = None
+        bullets: List[str] = []
+
+        title_line, inline_metadata = _split_inline_title_and_metadata(title_line)
+        if inline_metadata:
+            metadata = inline_metadata
+
+        i += 1
+
+        # collect optional metadata / tech stack lines until bullets begin
+        while i < len(lines):
+            candidate = lines[i].strip()
+
+            if not candidate:
+                i += 1
+                continue
+
+            if _is_bullet_line(candidate):
+                break
+
+            # if we hit another title before bullets, treat previous project as empty-header project
+            if _looks_like_project_title(candidate):
+                break
+
+            if _looks_like_tech_stack_line(candidate):
+                if tech_stack:
+                    tech_stack = f"{tech_stack}, {candidate}"
+                else:
+                    tech_stack = candidate
+            elif _looks_like_metadata_line(candidate):
+                if metadata:
+                    metadata = f"{metadata} {candidate}"
+                else:
+                    metadata = candidate
             else:
-                current_header = line.strip()
+                # fallback: if it is a short line, treat as metadata; otherwise attach to metadata too
+                if metadata:
+                    metadata = f"{metadata} {candidate}"
+                else:
+                    metadata = candidate
 
-    flush_group()
+            i += 1
 
-    # fallback: section has bullets but headers were not detected cleanly
-    if not groups:
-        flat_bullets = extract_bullets(section_text)
-        if flat_bullets:
-            groups = [{
-                "section": section_name,
-                "header": f"{section_name.title()} Entry 1",
-                "bullets": flat_bullets,
-            }]
+        # collect bullets for this project
+        while i < len(lines):
+            current_line = lines[i].strip()
 
-    # second fallback:
-    # if we detected multiple "headers" but some groups ended empty, merge empties away by only returning bullet groups
-    if not saw_any_header and groups:
-        groups[0]["header"] = f"{section_name.title()} Entry 1"
+            if not current_line:
+                i += 1
+                continue
 
-    return groups
+            if not _is_bullet_line(current_line):
+                break
+
+            bullet_match = BULLET_START_RE.match(current_line)
+            current_parts = [bullet_match.group(2).strip()]
+            i += 1
+
+            while i < len(lines):
+                next_line = lines[i].strip()
+
+                if not next_line:
+                    i += 1
+                    continue
+
+                if _is_bullet_line(next_line):
+                    break
+
+                # critical fix:
+                # if the next line looks like a new project title,
+                # stop the current bullet and let outer loop start a new project
+                if _looks_like_project_title(next_line):
+                    break
+
+                # allow wrapped bullet lines to continue normally
+                current_parts.append(next_line)
+                i += 1
+
+            bullets.append(" ".join(current_parts).strip())
+
+            # after a bullet, if next line is a new title-ish non-bullet line, stop this project
+            if i < len(lines):
+                next_line = lines[i].strip()
+                if next_line and not _is_bullet_line(next_line) and _looks_like_project_title(next_line):
+                    break
+
+        groups.append({
+            "section": "projects",
+            "title": title_line,
+            "metadata": metadata,
+            "tech_stack": tech_stack,
+            "bullets": bullets,
+        })
+
+    return [g for g in groups if g["title"] or g["bullets"]]
 
 
 def extract_bullets(section_text: str) -> List[str]:
-    """
-    Handles multi-line bullets.
-    """
     if not section_text.strip():
         return []
 
@@ -330,16 +443,13 @@ def extract_bullets(section_text: str) -> List[str]:
     bullets: List[str] = []
     current: List[str] = []
 
-    bullet_start_pattern = re.compile(r"^([-*•])\s+(.*)$")
-
     for line in lines:
-        m = bullet_start_pattern.match(line)
+        m = BULLET_START_RE.match(line)
         if m:
             if current:
                 bullets.append(" ".join(current).strip())
             current = [m.group(2).strip()]
         else:
-            # continuation of previous bullet
             if current:
                 current.append(line.strip())
 
@@ -347,6 +457,81 @@ def extract_bullets(section_text: str) -> List[str]:
         bullets.append(" ".join(current).strip())
 
     return bullets
+
+
+def extract_experience_groups(section_text: str) -> List[Dict]:
+    if not section_text.strip():
+        return []
+
+    lines = split_lines(section_text)
+    groups: List[Dict] = []
+    i = 0
+
+    while i < len(lines):
+        if _is_bullet_line(lines[i]):
+            i += 1
+            continue
+
+        header_lines: List[str] = []
+
+        while i < len(lines) and not _is_bullet_line(lines[i]):
+            header_lines.append(lines[i].strip())
+            i += 1
+
+            if len(header_lines) >= 3:
+                break
+
+        organization = None
+        role = ""
+        dates = None
+
+        if len(header_lines) >= 3:
+            organization = header_lines[0]
+            role = header_lines[1]
+            dates = header_lines[2]
+        elif len(header_lines) == 2:
+            organization = header_lines[0]
+            role = header_lines[1]
+        elif len(header_lines) == 1:
+            role = header_lines[0]
+
+        bullets: List[str] = []
+
+        while i < len(lines):
+            bullet_match = BULLET_START_RE.match(lines[i])
+            if not bullet_match:
+                break
+
+            current_parts = [bullet_match.group(2).strip()]
+            i += 1
+
+            while i < len(lines) and not _is_bullet_line(lines[i]):
+                next_line = lines[i].strip()
+
+                # if this looks like the start of the next experience entry, stop
+                if len(next_line.split()) <= 8 and not next_line.endswith(".") and not _looks_like_tech_stack_line(next_line):
+                    capitalized = sum(1 for w in next_line.split() if w[:1].isupper())
+                    if capitalized >= max(1, len(next_line.split()) - 1):
+                        break
+
+                current_parts.append(next_line)
+                i += 1
+
+            bullets.append(" ".join(current_parts).strip())
+
+            if i < len(lines) and not _is_bullet_line(lines[i]):
+                break
+
+        if role or bullets:
+            groups.append({
+                "section": "experience",
+                "organization": organization,
+                "role": role or "Experience Entry",
+                "dates": dates,
+                "bullets": bullets,
+            })
+
+    return groups
 
 
 def normalize_for_matching(text: str) -> str:
@@ -357,9 +542,6 @@ def normalize_for_matching(text: str) -> str:
 
 
 def extract_canonical_skills(text: str) -> List[str]:
-    """
-    Phrase-first skill extraction using a skill alias dictionary.
-    """
     normalized = normalize_for_matching(text)
     found: Set[str] = set()
 
@@ -375,12 +557,6 @@ def extract_canonical_skills(text: str) -> List[str]:
 
 
 def classify_jd_lines(lines: List[str]) -> Tuple[List[str], List[str], List[str]]:
-    """
-    Naive JD line classification:
-    - required lines
-    - preferred lines
-    - other lines
-    """
     required_lines = []
     preferred_lines = []
     other_lines = []
@@ -421,8 +597,8 @@ def parse_resume(resume_text: str) -> Dict:
     education_text = sections.get("education", "")
     certifications_text = sections.get("certifications", "")
 
-    experience_groups = extract_bullet_groups(experience_text, "experience")
-    project_groups = extract_bullet_groups(projects_text, "projects")
+    experience_groups = extract_experience_groups(experience_text)
+    project_groups = extract_project_groups(projects_text)
 
     experience_bullets = [b for g in experience_groups for b in g["bullets"]]
     project_bullets = [b for g in project_groups for b in g["bullets"]]
@@ -443,7 +619,6 @@ def parse_resume(resume_text: str) -> Dict:
         "normalized_text": normalized,
         "sections": sections,
 
-        # new fields expected by scoring.py
         "summary": summary_text,
         "skills_text": skills_text,
         "experience_text": experience_text,
@@ -456,11 +631,9 @@ def parse_resume(resume_text: str) -> Dict:
         "has_images": False,
         "current_or_recent_title": "",
 
-        # new grouped fields
         "experience_groups": experience_groups,
         "project_groups": project_groups,
 
-        # existing flat fields preserved for compatibility
         "experience_bullets": experience_bullets,
         "project_bullets": project_bullets,
         "all_bullets": experience_bullets + project_bullets,

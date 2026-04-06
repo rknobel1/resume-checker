@@ -17,6 +17,7 @@ class Suggestion(BaseModel):
     estimated_score_impact: float
     confidence: float
 
+
 class RequirementMatch(BaseModel):
     requirement: str
     category: str
@@ -26,6 +27,7 @@ class RequirementMatch(BaseModel):
     evidence_score: int
     best_evidence: Optional[str] = None
     notes: Optional[str] = None
+
 
 class ScoreBreakdown(BaseModel):
     overall_score: float
@@ -49,6 +51,7 @@ class DebugInfo(BaseModel):
     jd_preferred_skills: List[str] = Field(default_factory=list)
     jd_all_skills: List[str] = Field(default_factory=list)
 
+
 class WeakBullet(BaseModel):
     id: str
     text: str
@@ -56,24 +59,55 @@ class WeakBullet(BaseModel):
     reasons: List[str] = Field(default_factory=list)
 
 
+class ParsedProjectEntry(BaseModel):
+    title: str
+    metadata: Optional[str] = None
+    tech_stack: Optional[str] = None
+    bullets: List[str] = Field(default_factory=list)
+
+
+class ParsedExperienceEntry(BaseModel):
+    organization: Optional[str] = None
+    role: str
+    dates: Optional[str] = None
+    bullets: List[str] = Field(default_factory=list)
+
+
+class ParsedResumeSummary(BaseModel):
+    summary_text: str = ""
+    skills: List[str] = Field(default_factory=list)
+    sections_found: List[str] = Field(default_factory=list)
+
+    projects: List[ParsedProjectEntry] = Field(default_factory=list)
+    experience: List[ParsedExperienceEntry] = Field(default_factory=list)
+
+    education_text: str = ""
+    certifications_text: str = ""
+
+    project_count: int = 0
+    experience_count: int = 0
+
+    parser_notes: List[str] = Field(default_factory=list)
+
+
 class AnalyzeResponse(BaseModel):
     score_breakdown: ScoreBreakdown
     missing_keywords: List[str] = Field(default_factory=list)
 
-    # Backward-compatible field for current frontend
     weak_bullets: List[str] = Field(default_factory=list)
-
-    # Better structured field for future use
     weak_bullet_details: List[WeakBullet] = Field(default_factory=list)
 
     suggestions: List[Suggestion] = Field(default_factory=list)
 
-    # Optional during development
+    parsed_resume: Optional[ParsedResumeSummary] = None
+
     debug: Optional[DebugInfo] = None
+
 
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str
+
 
 class PlanModeRequest(BaseModel):
     bullet_id: str
@@ -84,13 +118,15 @@ class PlanModeRequest(BaseModel):
     user_message: str
     conversation_history: List[ChatMessage] = Field(default_factory=list)
 
+
 class PlanModeResponse(BaseModel):
-    mode: Literal["question","clarify", "options"]
+    mode: Literal["question", "clarify", "options"]
     reply: str
     question: Optional[str] = None
     options: List[str] = Field(default_factory=list)
     current_bullet: str
     debug_error: Optional[str] = None
+
 
 class Requirement(BaseModel):
     text: str
@@ -127,7 +163,6 @@ class Requirement(BaseModel):
             "soft_skill": "skill",
         }
 
-        # normalize obvious alias first
         v = aliases.get(v, v)
 
         allowed = {
@@ -143,7 +178,6 @@ class Requirement(BaseModel):
         if v in allowed:
             return v
 
-        # Handle combined labels like "experience|skill" or "domain/responsibility"
         parts = re.split(r"[|/,;]+", v)
         parts = [aliases.get(p.strip(), p.strip()) for p in parts if p.strip()]
         parts = [p for p in parts if p in allowed]
@@ -151,7 +185,6 @@ class Requirement(BaseModel):
         if not parts:
             return "skill"
 
-        # Prefer the more concrete / ATS-useful label
         priority = [
             "experience",
             "education",
@@ -181,4 +214,4 @@ class ResumeBulletEvidence(BaseModel):
     section: str
     matched_requirement: Optional[str] = None
     semantic_score: float = 0.0
-    evidence_score: int = 0  # 0-5
+    evidence_score: int = 0
