@@ -110,7 +110,10 @@ export default function HomePage() {
 
               <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
                 <ScoreSidebar result={result} />
-                <ResultsContent result={result} />
+                <ResultsContent
+                  result={result}
+                  jobDescription={jobDescription}
+                />
               </div>
             </div>
           )}

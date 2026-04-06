@@ -1,7 +1,9 @@
+export type ViewState = "form" | "loading" | "result";
+
 export type RequirementMatch = {
   requirement: string;
   category: string;
-  importance: "required" | "preferred";
+  importance: string;
   matched: boolean;
   score: number;
   evidence_score: number;
@@ -25,29 +27,46 @@ export type ScoreBreakdown = {
   improvement_priorities: string[];
 };
 
+export type WeakBullet = {
+  id: string;
+  text: string;
+  section: string;
+  reasons: string[];
+};
+
+export type Suggestion = {
+  id: string;
+  section: string;
+  original_text: string;
+  proposed_text: string;
+  reason: string;
+  estimated_score_impact: number;
+  confidence: number;
+};
+
 export type AnalyzeResponse = {
   score_breakdown: ScoreBreakdown;
   missing_keywords: string[];
   weak_bullets: string[];
-  weak_bullet_details: {
-    text: string;
-    section: string;
-    reasons: string[];
-  }[];
-  suggestions: {
-    id?: string;
-    section?: string;
-    original_text?: string;
-    proposed_text?: string;
-    reason?: string;
-    estimated_score_impact?: number;
-    confidence?: number;
-    type?: string;
-    target_requirement?: string;
-    original?: string;
-    suggested?: string;
-  }[];
-  debug?: unknown;
+  weak_bullet_details: WeakBullet[];
+  suggestions: Suggestion[];
+  debug?: {
+    resume_skills: string[];
+    jd_required_skills: string[];
+    jd_preferred_skills: string[];
+    jd_all_skills: string[];
+  } | null;
 };
 
-export type ViewState = "form" | "loading" | "result";
+export type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+export type PlanModeResponse = {
+  mode: "question" | "options";
+  reply: string;
+  question?: string | null;
+  options: string[];
+  current_bullet: string;
+};

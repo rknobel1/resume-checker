@@ -17,20 +17,13 @@ export default function ResultsHeader({
         </p>
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex ">
         <button
           type="button"
           onClick={onEditInputs}
           className="rounded-2xl border border-slate-300 px-4 py-2.5 font-medium text-slate-700 transition hover:bg-slate-50"
         >
           Edit inputs
-        </button>
-        <button
-          type="button"
-          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-          className="rounded-2xl bg-slate-900 px-4 py-2.5 font-medium text-white transition hover:bg-slate-800"
-        >
-          Back to top
         </button>
       </div>
     </div>

@@ -169,37 +169,62 @@ def generate_suggestions(
 
 def build_plan_mode_prompt(
     bullet_text: str,
+    current_bullet: str,
+    bullet_reasons: List[str],
     job_description: str,
     user_message: str,
-    history: List[str],
+    history: List[dict],
 ) -> str:
-    history_text = "\n".join(history[-8:])
+    history_text = "\n".join(
+        f"{msg['role'].upper()}: {msg['content']}" for msg in history[-8:]
+    )
+    reasons_text = "; ".join(bullet_reasons) if bullet_reasons else "General weakness"
 
     return f"""
-You are helping a user strengthen a resume bullet.
+You are helping a user strengthen a resume bullet for ATS alignment.
 
 Rules:
-- Ask one focused question at a time if key details are missing.
-- Do not invent facts.
+- Do not invent facts, metrics, scope, tools, outcomes, or ownership.
+- Ask only one focused question at a time if important details are missing.
 - Prioritize discovering, in this order:
   1. scope
   2. tools/technologies
   3. ownership
   4. measurable outcome
-- Once enough detail exists, stop asking questions and provide exactly 3 improved bullet options.
-- Keep responses concise and practical.
+- Once enough detail exists, return exactly 3 improved bullet options.
+- Keep the response concise and practical.
+- Return valid JSON only.
 
-Output format:
-- If more detail is needed, output:
-QUESTION: <one focused question>
+If more detail is needed, return:
+{{
+  "mode": "question",
+  "reply": "short assistant reply",
+  "question": "one focused question",
+  "options": [],
+  "current_bullet": "{current_bullet}"
+}}
 
-- If enough detail is available, output:
-OPTION 1: <bullet>
-OPTION 2: <bullet>
-OPTION 3: <bullet>
+If enough detail exists, return:
+{{
+  "mode": "options",
+  "reply": "short assistant reply",
+  "question": null,
+  "options": [
+    "option 1",
+    "option 2",
+    "option 3"
+  ],
+  "current_bullet": "{current_bullet}"
+}}
 
-Current weak bullet:
+Original weak bullet:
 {bullet_text}
+
+Current draft bullet:
+{current_bullet}
+
+Why it was flagged:
+{reasons_text}
 
 Job description:
 {job_description}
@@ -214,14 +239,42 @@ Latest user message:
 
 def plan_mode_reply(
     bullet_text: str,
+    current_bullet: str,
+    bullet_reasons: List[str],
     job_description: str,
     user_message: str,
-    history: List[str],
-) -> str:
+    history: List[dict],
+) -> dict:
     prompt = build_plan_mode_prompt(
         bullet_text=bullet_text,
+        current_bullet=current_bullet,
+        bullet_reasons=bullet_reasons,
         job_description=job_description,
         user_message=user_message,
         history=history,
     )
-    return ask_ollama(prompt)
+
+    raw = ask_ollama(prompt)
+    parsed = extract_json(raw)
+
+    mode = parsed.get("mode", "question")
+    reply = str(parsed.get("reply", "")).strip()
+    question = parsed.get("question")
+    options = parsed.get("options", [])
+    next_bullet = str(parsed.get("current_bullet", current_bullet)).strip()
+
+    if mode not in {"question", "options"}:
+        mode = "question"
+
+    if not isinstance(options, list):
+        options = []
+
+    options = [str(opt).strip() for opt in options[:3] if str(opt).strip()]
+
+    return {
+        "mode": mode,
+        "reply": reply,
+        "question": question,
+        "options": options,
+        "current_bullet": next_bullet or current_bullet,
+    }

@@ -35,11 +35,10 @@ def analyze_weak_bullets(resume_data: dict):
 
     all_bullets = resume_data.get("all_bullets", []) or []
 
-    for bullet in all_bullets:
+    for idx, bullet in enumerate(all_bullets, start=1):
         s = score_bullet(bullet)
         reasons = []
 
-        # only flag bullets that are truly weak or structurally incomplete
         if s["score"] < 58 or s.get("fragment_penalty", 0.0) >= 0.15:
             if s["starts_weak"] >= 1.0:
                 reasons.append("Starts with a weak phrase")
@@ -59,9 +58,11 @@ def analyze_weak_bullets(resume_data: dict):
                 reasons.append("Bullet is somewhat vague or underspecified")
 
         if reasons:
+            bullet_id = f"weak-{idx}"
             weak_bullets.append(bullet)
             weak_bullet_details.append(
                 WeakBullet(
+                    id=bullet_id,
                     text=bullet,
                     section="experience",
                     reasons=reasons,
@@ -142,13 +143,15 @@ def analyze_resume(payload: AnalyzeRequest):
 @app.post("/plan-mode/chat", response_model=PlanModeResponse)
 def plan_mode_chat(req: PlanModeRequest):
     try:
-        reply = plan_mode_reply(
+        result = plan_mode_reply(
             bullet_text=req.bullet_text,
+            current_bullet=req.current_bullet or req.bullet_text,
+            bullet_reasons=req.bullet_reasons,
             job_description=req.job_description,
             user_message=req.user_message,
-            history=req.conversation_history or [],
+            history=[msg.model_dump() for msg in req.conversation_history],
         )
-        return PlanModeResponse(reply=reply)
+        return PlanModeResponse(**result)
     except Exception as e:
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))

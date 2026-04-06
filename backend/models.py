@@ -43,17 +43,17 @@ class ScoreBreakdown(BaseModel):
     improvement_priorities: List[str] = Field(default_factory=list)
 
 
-class WeakBullet(BaseModel):
-    text: str
-    section: str
-    reasons: List[str] = Field(default_factory=list)
-
-
 class DebugInfo(BaseModel):
     resume_skills: List[str] = Field(default_factory=list)
     jd_required_skills: List[str] = Field(default_factory=list)
     jd_preferred_skills: List[str] = Field(default_factory=list)
     jd_all_skills: List[str] = Field(default_factory=list)
+
+class WeakBullet(BaseModel):
+    id: str
+    text: str
+    section: str
+    reasons: List[str] = Field(default_factory=list)
 
 
 class AnalyzeResponse(BaseModel):
@@ -71,16 +71,25 @@ class AnalyzeResponse(BaseModel):
     # Optional during development
     debug: Optional[DebugInfo] = None
 
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
 
 class PlanModeRequest(BaseModel):
+    bullet_id: str
     bullet_text: str
+    current_bullet: Optional[str] = None
+    bullet_reasons: List[str] = Field(default_factory=list)
     job_description: str
     user_message: str
-    conversation_history: Optional[List[str]] = Field(default_factory=list)
-
+    conversation_history: List[ChatMessage] = Field(default_factory=list)
 
 class PlanModeResponse(BaseModel):
+    mode: Literal["question", "options"]
     reply: str
+    question: Optional[str] = None
+    options: List[str] = Field(default_factory=list)
+    current_bullet: str
 
 class Requirement(BaseModel):
     text: str
