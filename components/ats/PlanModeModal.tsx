@@ -18,6 +18,29 @@ type Props = {
   onApplyOption: (value: string) => void;
 };
 
+const THINKING_PLACEHOLDER = "__thinking__";
+
+function ThinkingText() {
+  const [dots, setDots] = useState("");
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDots((prev) => {
+        if (prev === "...") return "";
+        return prev + ".";
+      });
+    }, 400);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <p className="whitespace-pre-wrap leading-6 text-slate-500">
+      Thinking{dots}
+    </p>
+  );
+}
+
 export default function PlanModeModal({
   isOpen,
   bullet,
@@ -41,15 +64,23 @@ export default function PlanModeModal({
 
   if (!isOpen || !bullet) return null;
 
+  function refreshChat() {
+    onMessagesChange([]);
+    onOptionsChange([]);
+    setInput("");
+  }
+
   async function sendMessage(messageText?: string) {
     const userText = (messageText ?? input).trim();
     if (!userText || loading) return;
 
-    const nextMessages: ChatMessage[] = [
-      ...messages,
-      { role: "user", content: userText },
-    ];
-    onMessagesChange(nextMessages);
+    const userMessage: ChatMessage = { role: "user", content: userText };
+    const thinkingMessage: ChatMessage = {
+      role: "assistant",
+      content: THINKING_PLACEHOLDER,
+    };
+
+    onMessagesChange([...messages, userMessage, thinkingMessage]);
     onOptionsChange([]);
     setInput("");
 
@@ -66,7 +97,7 @@ export default function PlanModeModal({
           bullet_reasons: bullet?.reasons,
           job_description: jobDescription,
           user_message: userText,
-          conversation_history: nextMessages,
+          conversation_history: [...messages, userMessage],
         }),
       });
 
@@ -82,7 +113,8 @@ export default function PlanModeModal({
           : data.reply;
 
       onMessagesChange([
-        ...nextMessages,
+        ...messages,
+        userMessage,
         { role: "assistant", content: assistantText },
       ]);
       onOptionsChange(data.options ?? []);
@@ -92,8 +124,10 @@ export default function PlanModeModal({
         err instanceof Error
           ? err.message
           : "Something went wrong in plan mode.";
+
       onMessagesChange([
-        ...nextMessages,
+        ...messages,
+        userMessage,
         { role: "assistant", content: `Error: ${message}` },
       ]);
     }
@@ -163,23 +197,34 @@ export default function PlanModeModal({
                   </div>
                 )}
 
-                {messages.map((msg, idx) => (
-                  <div
-                    key={`${msg.role}-${idx}`}
-                    className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
-                      msg.role === "user"
-                        ? "ml-auto bg-slate-900 text-white"
-                        : "mr-auto bg-white text-slate-800 ring-1 ring-slate-200"
-                    }`}
-                  >
-                    <p className="mb-1 text-xs font-semibold uppercase tracking-wide opacity-70">
-                      {msg.role}
-                    </p>
-                    <p className="whitespace-pre-wrap leading-6">
-                      {msg.content}
-                    </p>
-                  </div>
-                ))}
+                {messages.map((msg, idx) => {
+                  const isThinking =
+                    msg.role === "assistant" &&
+                    msg.content === THINKING_PLACEHOLDER;
+
+                  return (
+                    <div
+                      key={`${msg.role}-${idx}`}
+                      className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
+                        msg.role === "user"
+                          ? "ml-auto bg-slate-900 text-white"
+                          : "mr-auto bg-white text-slate-800 ring-1 ring-slate-200"
+                      }`}
+                    >
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-wide opacity-70">
+                        {msg.role}
+                      </p>
+
+                      {isThinking ? (
+                        <ThinkingText />
+                      ) : (
+                        <p className="whitespace-pre-wrap leading-6">
+                          {msg.content}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
 
                 {options.length > 0 && (
                   <div className="space-y-3 pt-2">
@@ -251,7 +296,16 @@ export default function PlanModeModal({
                   className="max-h-40 min-h-[110px] w-full resize-none rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-500"
                 />
 
-                <div className="flex justify-end">
+                <div className="flex justify-between">
+                  <button
+                    type="button"
+                    onClick={refreshChat}
+                    disabled={loading}
+                    className="rounded-2xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Refresh
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => sendMessage()}

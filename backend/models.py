@@ -85,11 +85,12 @@ class PlanModeRequest(BaseModel):
     conversation_history: List[ChatMessage] = Field(default_factory=list)
 
 class PlanModeResponse(BaseModel):
-    mode: Literal["question", "options"]
+    mode: Literal["question","clarify", "options"]
     reply: str
     question: Optional[str] = None
     options: List[str] = Field(default_factory=list)
     current_bullet: str
+    debug_error: Optional[str] = None
 
 class Requirement(BaseModel):
     text: str

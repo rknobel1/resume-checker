@@ -130,7 +130,7 @@ def generate_suggestions(
         )
 
         try:
-            raw = ask_ollama(prompt)
+            raw = ask_ollama(prompt, task="rewrite_generation")
             parsed = extract_json(raw)
 
             proposed_text = parsed.get("proposed_text", bullet).strip()
@@ -167,6 +167,57 @@ def generate_suggestions(
 
     return suggestions
 
+def is_vague_clarification_request(user_message: str) -> bool:
+    msg = (user_message or "").strip().lower()
+
+    vague_patterns = [
+        "what technologies",
+        "what tools",
+        "like what",
+        "which ones",
+        "examples",
+        "for example",
+        "common technologies",
+        "common tools",
+        "i forgot",
+        "because i forgot",
+        "what do you mean",
+        "can you list",
+    ]
+
+    if any(p in msg for p in vague_patterns):
+        return True
+
+    short_question = len(msg.split()) <= 7 and "?" in msg
+    return short_question
+
+
+def bullet_has_grounded_tech_context(
+    bullet_text: str,
+    current_bullet: str,
+    history: List[dict],
+) -> bool:
+    combined = " ".join(
+        [
+            bullet_text or "",
+            current_bullet or "",
+            " ".join(str(m.get("content", "")) for m in history[-8:]),
+        ]
+    ).lower()
+
+    # Keep this conservative. We only want to say "grounded" if the context
+    # already contains plausible concrete tool names or tech terms.
+    tech_terms = [
+        "python", "java", "javascript", "typescript", "react", "next.js",
+        "node", "sql", "postgres", "mysql", "mongodb", "aws", "azure",
+        "gcp", "docker", "kubernetes", "git", "terraform", "pandas",
+        "numpy", "pytorch", "tensorflow", "scikit", "spark", "airflow",
+        "tableau", "power bi", "excel", "linux", "rest api", "graphql",
+    ]
+
+    return any(term in combined for term in tech_terms)
+
+
 def build_plan_mode_prompt(
     bullet_text: str,
     current_bullet: str,
@@ -191,15 +242,40 @@ Rules:
   2. tools/technologies
   3. ownership
   4. measurable outcome
-- Once enough detail exists, return exactly 3 improved bullet options.
+- Only return 3 improved bullet options when sufficient concrete detail is explicitly known.
+- If the user asks a vague follow-up such as:
+  - "what technologies?"
+  - "like what?"
+  - "examples?"
+  - "which ones?"
+  - "can you list common technologies because I forgot?"
+  then do NOT generate bullet options.
+- For vague follow-ups, do NOT list generic technologies unless they are clearly supported by the bullet or prior conversation.
+- If the user seems unsure or forgot details, help them remember by asking a narrower clarification question tied to the bullet.
+- Never use generic examples as a substitute for clarification.
 - Keep the response concise and practical.
 - Return valid JSON only.
+
+Decide between these modes:
+
+1. Use "question" when important bullet details are still missing.
+2. Use "clarify" when the user's latest message is vague, ambiguous, forgetful, or asks for examples not grounded in the bullet/context.
+3. Use "options" only when enough grounded detail exists to write strong bullets without inventing facts.
 
 If more detail is needed, return:
 {{
   "mode": "question",
   "reply": "short assistant reply",
   "question": "one focused question",
+  "options": [],
+  "current_bullet": "{current_bullet}"
+}}
+
+If the user is asking for clarification/examples but the answer is not grounded enough, return:
+{{
+  "mode": "clarify",
+  "reply": "short assistant reply",
+  "question": "one focused clarification question tied to the bullet",
   "options": [],
   "current_bullet": "{current_bullet}"
 }}
@@ -245,6 +321,19 @@ def plan_mode_reply(
     user_message: str,
     history: List[dict],
 ) -> dict:
+    if is_vague_clarification_request(user_message) and not bullet_has_grounded_tech_context(
+        bullet_text=bullet_text,
+        current_bullet=current_bullet,
+        history=history,
+    ):
+        return {
+            "mode": "clarify",
+            "reply": "I don’t want to guess and add technologies you may not have used.",
+            "question": "What tools, platforms, or languages do you remember actually using in this work?",
+            "options": [],
+            "current_bullet": current_bullet,
+        }
+
     prompt = build_plan_mode_prompt(
         bullet_text=bullet_text,
         current_bullet=current_bullet,
@@ -254,27 +343,52 @@ def plan_mode_reply(
         history=history,
     )
 
-    raw = ask_ollama(prompt)
-    parsed = extract_json(raw)
+    try:
+        raw = ask_ollama(prompt, task="plan_mode")
+        parsed = extract_json(raw)
 
-    mode = parsed.get("mode", "question")
-    reply = str(parsed.get("reply", "")).strip()
-    question = parsed.get("question")
-    options = parsed.get("options", [])
-    next_bullet = str(parsed.get("current_bullet", current_bullet)).strip()
+        mode = parsed.get("mode", "question")
+        reply = str(parsed.get("reply", "")).strip() or "Let’s improve this bullet."
+        question = parsed.get("question")
+        options = parsed.get("options", [])
+        next_bullet = str(parsed.get("current_bullet", current_bullet)).strip()
 
-    if mode not in {"question", "options"}:
-        mode = "question"
+        if mode not in {"question", "clarify", "options"}:
+            mode = "question"
 
-    if not isinstance(options, list):
-        options = []
+        if not isinstance(options, list):
+            options = []
 
-    options = [str(opt).strip() for opt in options[:3] if str(opt).strip()]
+        options = [str(opt).strip() for opt in options[:3] if str(opt).strip()]
 
-    return {
-        "mode": mode,
-        "reply": reply,
-        "question": question,
-        "options": options,
-        "current_bullet": next_bullet or current_bullet,
-    }
+        # Extra safeguard:
+        # vague user follow-up should not produce options unless context is grounded
+        if mode == "options" and is_vague_clarification_request(user_message):
+            if not bullet_has_grounded_tech_context(
+                bullet_text=bullet_text,
+                current_bullet=current_bullet,
+                history=history,
+            ):
+                mode = "clarify"
+                options = []
+                question = "What tools, platforms, or languages do you remember actually using in this work?"
+                if not reply:
+                    reply = "I don’t want to guess here."
+
+        return {
+            "mode": mode,
+            "reply": reply,
+            "question": question,
+            "options": options,
+            "current_bullet": next_bullet or current_bullet,
+        }
+
+    except Exception as e:
+        return {
+            "mode": "question",
+            "reply": "I couldn’t parse the planning response cleanly, so let’s continue with a simpler follow-up.",
+            "question": "What was the main result, tool, or measurable impact of this work?",
+            "options": [],
+            "current_bullet": current_bullet,
+            "debug_error": str(e),
+        }

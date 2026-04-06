@@ -33,12 +33,14 @@ JSON schema:
 }
 """
 
+
 def _safe_json_loads(text: str) -> Dict[str, Any]:
     text = text.strip()
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if match:
         text = match.group(0)
     return json.loads(text)
+
 
 def structure_job_description(job_description: str) -> JobDescriptionStructured:
     prompt = f"""
@@ -50,7 +52,7 @@ Job description:
 Return ONLY valid JSON.
 """.strip()
 
-    response = ask_ollama(prompt)
+    response = ask_ollama(prompt, task="jd_structuring")
     data = _safe_json_loads(response)
 
     # defensive cleanup before pydantic validation
