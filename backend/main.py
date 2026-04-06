@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+import traceback
 
 from models import (
     AnalyzeRequest,
@@ -125,7 +126,8 @@ async def analyze_pdf(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Analyze failed: {str(e)}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/analyze", response_model=AnalyzeResponse)
@@ -133,7 +135,8 @@ def analyze_resume(payload: AnalyzeRequest):
     try:
         return build_analyze_response(payload.resume_text, payload.job_description)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Analyze failed: {str(e)}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/plan-mode/chat", response_model=PlanModeResponse)
@@ -147,4 +150,5 @@ def plan_mode_chat(req: PlanModeRequest):
         )
         return PlanModeResponse(reply=reply)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Plan mode failed: {str(e)}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
