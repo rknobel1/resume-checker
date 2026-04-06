@@ -36,42 +36,72 @@ def analyze_weak_bullets(resume_data: dict):
     weak_bullet_details = []
     bullet_reasons = {}
 
-    all_bullets = resume_data.get("all_bullets", []) or []
+    grouped_entries = []
+    grouped_entries.extend(resume_data.get("experience_groups", []) or [])
+    grouped_entries.extend(resume_data.get("project_groups", []) or [])
 
-    for idx, bullet in enumerate(all_bullets, start=1):
-        s = score_bullet(bullet)
-        reasons = []
+    # fallback for older parser output
+    if not grouped_entries:
+        grouped_entries = [
+            {
+                "section": "experience",
+                "header": "Experience Entry 1",
+                "bullets": resume_data.get("experience_bullets", []) or [],
+            },
+            {
+                "section": "projects",
+                "header": "Projects Entry 1",
+                "bullets": resume_data.get("project_bullets", []) or [],
+            },
+        ]
 
-        if s["score"] < 58 or s.get("fragment_penalty", 0.0) >= 0.15:
-            if s["starts_weak"] >= 1.0:
-                reasons.append("Starts with a weak phrase")
-            elif s["starts_strong"] == 0.0 and s.get("fragment_penalty", 0.0) >= 0.15:
-                reasons.append("Reads more like a fragment than an action-focused bullet")
+    bullet_idx = 0
 
-            if s["has_metric"] == 0.0 and s["impact"] == 0.0:
-                reasons.append("Could show clearer measurable results or outcome")
+    for entry in grouped_entries:
+        section_name = entry.get("section", "experience")
+        entry_bullets = [b for b in (entry.get("bullets", []) or []) if b and b.strip()]
 
-            if s["has_tool"] == 0.0:
-                reasons.append("Could be more explicit about tools or technologies used")
+        for bullet in entry_bullets:
+            bullet_idx += 1
+            s = score_bullet(bullet, context_bullets=entry_bullets)
+            reasons = []
 
-            if s["ownership"] == 0.0 and s["starts_strong"] == 0.0:
-                reasons.append("Ownership or direct contribution is not very explicit")
+            if s["score"] < 58 or s.get("fragment_penalty", 0.0) >= 0.15:
+                if s["starts_weak"] >= 1.0:
+                    reasons.append("Starts with a weak phrase")
+                elif s["starts_strong"] == 0.0 and s.get("fragment_penalty", 0.0) >= 0.15:
+                    reasons.append("Reads more like a fragment than an action-focused bullet")
 
-            if s["specificity"] < 0.45:
-                reasons.append("Bullet is somewhat vague or underspecified")
+                if s["has_metric"] == 0.0 and s["impact"] == 0.0:
+                    if s.get("has_metric_context", 0.0) >= 1.0:
+                        reasons.append("Result is clearer elsewhere in this role/project; this bullet could stand on its own more")
+                    else:
+                        reasons.append("Could show clearer measurable results or outcome")
 
-        if reasons:
-            bullet_id = f"weak-{idx}"
-            weak_bullets.append(bullet)
-            weak_bullet_details.append(
-                WeakBullet(
-                    id=bullet_id,
-                    text=bullet,
-                    section="experience",
-                    reasons=reasons,
+                if s["has_tool"] == 0.0:
+                    if s.get("has_tool_context", 0.0) >= 1.0:
+                        reasons.append("Tools are implied elsewhere in this role/project; consider repeating them here for clarity")
+                    else:
+                        reasons.append("Could be more explicit about tools or technologies used")
+
+                if s["ownership"] == 0.0 and s["starts_strong"] == 0.0:
+                    reasons.append("Ownership or direct contribution is not very explicit")
+
+                if s["specificity"] < 0.45:
+                    reasons.append("Bullet is somewhat vague or underspecified")
+
+            if reasons:
+                bullet_id = f"weak-{bullet_idx}"
+                weak_bullets.append(bullet)
+                weak_bullet_details.append(
+                    WeakBullet(
+                        id=bullet_id,
+                        text=bullet,
+                        section=section_name,
+                        reasons=reasons,
+                    )
                 )
-            )
-            bullet_reasons[bullet] = "; ".join(reasons)
+                bullet_reasons[bullet] = "; ".join(reasons)
 
     return weak_bullets, weak_bullet_details, bullet_reasons
 
