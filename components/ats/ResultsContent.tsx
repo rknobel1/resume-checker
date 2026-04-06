@@ -248,7 +248,7 @@ export default function ResultsContent({
             {result.parsed_resume ? (
               <SectionCard title="What we read from your resume">
                 <div className="space-y-6">
-                  <div className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-3">
                     <div className="rounded-2xl bg-slate-50 p-4">
                       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                         Sections found
