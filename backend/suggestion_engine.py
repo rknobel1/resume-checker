@@ -167,30 +167,6 @@ def generate_suggestions(
 
     return suggestions
 
-def is_vague_clarification_request(user_message: str) -> bool:
-    msg = (user_message or "").strip().lower()
-
-    vague_patterns = [
-        "what technologies",
-        "what tools",
-        "like what",
-        "which ones",
-        "examples",
-        "for example",
-        "common technologies",
-        "common tools",
-        "i forgot",
-        "because i forgot",
-        "what do you mean",
-        "can you list",
-    ]
-
-    if any(p in msg for p in vague_patterns):
-        return True
-
-    short_question = len(msg.split()) <= 7 and "?" in msg
-    return short_question
-
 
 def bullet_has_grounded_tech_context(
     bullet_text: str,
@@ -321,18 +297,6 @@ def plan_mode_reply(
     user_message: str,
     history: List[dict],
 ) -> dict:
-    if is_vague_clarification_request(user_message) and not bullet_has_grounded_tech_context(
-        bullet_text=bullet_text,
-        current_bullet=current_bullet,
-        history=history,
-    ):
-        return {
-            "mode": "clarify",
-            "reply": "I don’t want to guess and add technologies you may not have used.",
-            "question": "What tools, platforms, or languages do you remember actually using in this work?",
-            "options": [],
-            "current_bullet": current_bullet,
-        }
 
     prompt = build_plan_mode_prompt(
         bullet_text=bullet_text,
@@ -360,20 +324,6 @@ def plan_mode_reply(
             options = []
 
         options = [str(opt).strip() for opt in options[:3] if str(opt).strip()]
-
-        # Extra safeguard:
-        # vague user follow-up should not produce options unless context is grounded
-        if mode == "options" and is_vague_clarification_request(user_message):
-            if not bullet_has_grounded_tech_context(
-                bullet_text=bullet_text,
-                current_bullet=current_bullet,
-                history=history,
-            ):
-                mode = "clarify"
-                options = []
-                question = "What tools, platforms, or languages do you remember actually using in this work?"
-                if not reply:
-                    reply = "I don’t want to guess here."
 
         return {
             "mode": mode,
