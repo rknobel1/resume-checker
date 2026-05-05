@@ -1,3 +1,7 @@
+"use client";
+
+import { useState } from "react";
+
 type UploadFormProps = {
   file: File | null;
   jobDescription: string;
@@ -15,7 +19,34 @@ export default function UploadForm({
   onJobDescriptionChange,
   onSubmit,
 }: UploadFormProps) {
+  const [isDragging, setIsDragging] = useState(false);
+  const [isInvalidDrag, setIsInvalidDrag] = useState(false);
+
+  function isPdfDrag(e: React.DragEvent<HTMLElement>) {
+    const item = e.dataTransfer.items?.[0];
+
+    if (!item) return false;
+
+    return item.kind === "file" && item.type === "application/pdf";
+  }
+
   const selectedFileName = file?.name ?? "No file selected";
+
+  function handleDrop(e: React.DragEvent<HTMLLabelElement>) {
+    e.preventDefault();
+    setIsDragging(false);
+
+    const droppedFile = e.dataTransfer.files?.[0];
+
+    if (!droppedFile) return;
+
+    if (droppedFile.type !== "application/pdf") {
+      onFileChange(null);
+      return;
+    }
+
+    onFileChange(droppedFile);
+  }
 
   return (
     <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.05fr_0.95fr]">
@@ -60,11 +91,61 @@ export default function UploadForm({
               Resume PDF
             </label>
 
-            <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 px-6 py-8 text-center transition hover:border-slate-500 hover:bg-slate-100">
+            <label
+              onDragEnter={(e) => {
+                e.preventDefault();
+
+                const valid = isPdfDrag(e);
+
+                setIsDragging(true);
+                setIsInvalidDrag(!valid);
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+
+                const valid = isPdfDrag(e);
+
+                e.dataTransfer.dropEffect = valid ? "copy" : "none";
+
+                setIsDragging(true);
+                setIsInvalidDrag(!valid);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+
+                setIsDragging(false);
+                setIsInvalidDrag(false);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+
+                setIsDragging(false);
+
+                const droppedFile = e.dataTransfer.files?.[0];
+
+                if (!droppedFile || droppedFile.type !== "application/pdf") {
+                  setIsInvalidDrag(false);
+                  onFileChange(null);
+                  return;
+                }
+
+                setIsInvalidDrag(false);
+                onFileChange(droppedFile);
+              }}
+              className={`flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-8 text-center transition ${
+                isInvalidDrag
+                  ? "cursor-not-allowed border-red-400 bg-red-50"
+                  : isDragging
+                    ? "cursor-copy border-blue-500 bg-blue-50"
+                    : "border-slate-300 bg-slate-50 hover:border-slate-500 hover:bg-slate-100"
+              }`}
+            >
               <span className="text-sm font-medium text-slate-900">
-                Click to upload
+                Click to upload or drag and drop
               </span>
+
               <span className="mt-1 text-sm text-slate-500">PDF only</span>
+
               <span className="mt-3 rounded-full bg-white px-3 py-1 text-xs text-slate-600 shadow-sm">
                 {selectedFileName}
               </span>
