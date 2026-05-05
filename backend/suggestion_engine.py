@@ -181,8 +181,6 @@ def bullet_has_grounded_tech_context(
         ]
     ).lower()
 
-    # Keep this conservative. We only want to say "grounded" if the context
-    # already contains plausible concrete tool names or tech terms.
     tech_terms = [
         "python", "java", "javascript", "typescript", "react", "next.js",
         "node", "sql", "postgres", "mysql", "mongodb", "aws", "azure",

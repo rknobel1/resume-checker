@@ -16,11 +16,14 @@ from models import (
     ParsedExperienceEntry,
     ParsedResumeSummary,
 )
-from parser import parse_resume, parse_job_description
+
 from scoring import score_resume_against_jd
 from suggestion_engine import generate_suggestions, plan_mode_reply
 from pdf_utils import extract_text_from_pdf_bytes
 from bullet_scorer import score_bullet
+from build_json_summaries import build_resume_json_summary, build_jd_json_summary
+
+import json
 
 
 app = FastAPI(title="Local ATS Resume App")
@@ -40,29 +43,30 @@ def analyze_weak_bullets(resume_data: dict):
     bullet_reasons = {}
 
     grouped_entries = []
-    grouped_entries.extend(resume_data.get("experience_groups", []) or [])
-    grouped_entries.extend(resume_data.get("project_groups", []) or [])
 
-    # fallback for older parser output
-    if not grouped_entries:
-        grouped_entries = [
-            {
-                "section": "experience",
-                "header": "Experience Entry 1",
-                "bullets": resume_data.get("experience_bullets", []) or [],
-            },
-            {
-                "section": "projects",
-                "header": "Projects Entry 1",
-                "bullets": resume_data.get("project_bullets", []) or [],
-            },
-        ]
+    for exp in resume_data.get("Experience", []) or []:
+        grouped_entries.append({
+            "section": "experience",
+            "header": exp.get("Title", "Experience Entry"),
+            "bullets": exp.get("Details", []) or [],
+        })
+
+    for project in resume_data.get("Projects", []) or []:
+        grouped_entries.append({
+            "section": "projects",
+            "header": project.get("Title", "Project Entry"),
+            "bullets": project.get("Details", []) or [],
+        })
 
     bullet_idx = 0
 
     for entry in grouped_entries:
         section_name = entry.get("section", "experience")
-        entry_bullets = [b for b in (entry.get("bullets", []) or []) if b and b.strip()]
+        entry_bullets = [
+            b.strip()
+            for b in (entry.get("bullets", []) or [])
+            if isinstance(b, str) and b.strip()
+        ]
 
         for bullet in entry_bullets:
             bullet_idx += 1
@@ -108,132 +112,101 @@ def analyze_weak_bullets(resume_data: dict):
 
     return weak_bullets, weak_bullet_details, bullet_reasons
 
-
 def build_parsed_resume_summary(resume_data: dict) -> ParsedResumeSummary:
-    experience_groups_raw = resume_data.get("experience_groups", []) or []
-    project_groups_raw = resume_data.get("project_groups", []) or []
+    def clean_list(items):
+        return [x.strip() for x in (items or []) if isinstance(x, str) and x.strip()]
 
-    experience_groups = [
-        ParsedResumeEntry(
-            section=group.get("section", "experience"),
-            header=group.get("header", "Experience Entry"),
-            subheader=group.get("subheader"),
-            bullets=[b for b in (group.get("bullets", []) or []) if b and b.strip()],
-        )
-        for group in experience_groups_raw
-    ]
+    def join_entries(entries: list[dict], keys: list[str]) -> str:
+        lines = []
+        for entry in entries or []:
+            parts = []
+            for key in keys:
+                value = entry.get(key)
+                if isinstance(value, list):
+                    value = ", ".join(clean_list(value))
+                if value:
+                    parts.append(str(value).strip())
+            if parts:
+                lines.append(" | ".join(parts))
+        return "\n".join(lines)
 
-    project_groups = [
-        ParsedResumeEntry(
-            section=group.get("section", "projects"),
-            header=group.get("header", "Projects Entry"),
-            subheader=group.get("subheader"),
-            bullets=[b for b in (group.get("bullets", []) or []) if b and b.strip()],
-        )
-        for group in project_groups_raw
-    ]
-
-    parser_notes = []
-    used_fallback_grouping = False
-
-    synthetic_headers = {
-        "Experience Entry 1",
-        "Projects Entry 1",
-    }
-
-    if any(g.header in synthetic_headers for g in experience_groups + project_groups):
-        used_fallback_grouping = True
-        parser_notes.append(
-            "Some entries may have been grouped using fallback headers because the parser could not confidently detect all role or project headers."
-        )
-
-    sections_found = list((resume_data.get("sections") or {}).keys())
-
-    if not experience_groups and (resume_data.get("experience_text") or "").strip():
-        parser_notes.append("Experience text was found, but no structured experience groups were extracted.")
-
-    if not project_groups and (resume_data.get("projects_text") or "").strip():
-        parser_notes.append("Project text was found, but no structured project groups were extracted.")
-
-    return ParsedResumeSummary(
-        summary_text=resume_data.get("summary", "") or "",
-        skills=resume_data.get("skills", []) or [],
-        sections_found=sections_found,
-        experience_groups=experience_groups,
-        project_groups=project_groups,
-        education_text=resume_data.get("education_text", "") or "",
-        certifications_text=resume_data.get("certifications_text", "") or "",
-        experience_group_count=len(experience_groups),
-        project_group_count=len(project_groups),
-        used_fallback_grouping=used_fallback_grouping,
-        parser_notes=parser_notes,
-    )
-
-
-def build_parsed_resume_summary(resume_data: dict) -> ParsedResumeSummary:
     projects = [
         ParsedProjectEntry(
-            title=group.get("title", "") or "Untitled Project",
-            metadata=group.get("metadata"),
-            tech_stack=group.get("tech_stack"),
-            bullets=[b for b in (group.get("bullets", []) or []) if b and b.strip()],
+            title=project.get("Title", "") or "Untitled Project",
+            metadata=None,
+            tech_stack=", ".join(clean_list(project.get("Technologies", []))),
+            bullets=clean_list(project.get("Details", [])),
         )
-        for group in (resume_data.get("project_groups", []) or [])
+        for project in (resume_data.get("Projects", []) or [])
     ]
 
     experience = [
         ParsedExperienceEntry(
-            organization=group.get("organization"),
-            role=group.get("role", "") or "Experience Entry",
-            dates=group.get("dates"),
-            bullets=[b for b in (group.get("bullets", []) or []) if b and b.strip()],
+            organization=exp.get("Company", ""),
+            role=exp.get("Title", "") or "Experience Entry",
+            dates=exp.get("Dates", ""),
+            bullets=clean_list(exp.get("Details", [])),
         )
-        for group in (resume_data.get("experience_groups", []) or [])
+        for exp in (resume_data.get("Experience", []) or [])
+    ]
+
+    skills = []
+    for group in resume_data.get("Skills", []) or []:
+        skills.extend(clean_list(group.get("Skills", [])))
+
+    sections_found = [
+        key for key, value in resume_data.items()
+        if value not in (None, "", [], {})
     ]
 
     notes = []
-    if not projects and (resume_data.get("projects_text") or "").strip():
-        notes.append("Project text was found, but no structured projects were extracted.")
-    if not experience and (resume_data.get("experience_text") or "").strip():
-        notes.append("Experience text was found, but no structured experience entries were extracted.")
+    if not projects and resume_data.get("Projects"):
+        notes.append("Project data was found, but no structured projects were extracted.")
+    if not experience and resume_data.get("Experience"):
+        notes.append("Experience data was found, but no structured experience entries were extracted.")
 
     return ParsedResumeSummary(
-        summary_text=resume_data.get("summary", "") or "",
-        skills=resume_data.get("skills", []) or [],
-        sections_found=list((resume_data.get("sections") or {}).keys()),
+        summary_text=resume_data.get("Summary", "") or "",
+        skills=skills,
+        sections_found=sections_found,
         projects=projects,
         experience=experience,
-        education_text=resume_data.get("education_text", "") or "",
-        certifications_text=resume_data.get("certifications_text", "") or "",
+        education_text=join_entries(
+            resume_data.get("Education", []),
+            ["University", "Degree", "Dates", "Minor", "GPA"],
+        ),
+        certifications_text=join_entries(
+            resume_data.get("Certifications", []),
+            ["Certification", "Details"],
+        ),
         project_count=len(projects),
         experience_count=len(experience),
         parser_notes=notes,
     )
 
 
-def build_analyze_response(resume_text: str, job_description: str) -> AnalyzeResponse:
-    resume_data = parse_resume(resume_text)
-    jd_debug = parse_job_description(job_description)
-    score_result = score_resume_against_jd(resume_data, job_description)
+def build_analyze_response_from_json(resume_json_summary: dict, jd_json_summary: dict) -> AnalyzeResponse:
+    
+    score_result = score_resume_against_jd(resume_json_summary, jd_json_summary.get("job_description"))
 
-    weak_bullets, weak_bullet_details, bullet_reasons = analyze_weak_bullets(resume_data)
+    weak_bullets, weak_bullet_details, bullet_reasons = analyze_weak_bullets(resume_json_summary)
 
     suggestions = generate_suggestions(
         weak_bullets=weak_bullets,
-        job_description=job_description,
+        job_description=jd_json_summary.get("job_description"),
         missing_skills=score_result.missing_required + score_result.missing_preferred,
         bullet_reasons=bullet_reasons,
         max_suggestions=5,
     )
 
     debug = DebugInfo(
-        resume_skills=resume_data.get("skills", []),
-        jd_required_skills=jd_debug.get("required_skills", []),
-        jd_preferred_skills=jd_debug.get("preferred_skills", []),
-        jd_all_skills=jd_debug.get("all_skills", []),
+        resume_skills=resume_json_summary.get("skills", []),
+        jd_required_skills=jd_json_summary.get("required_skills", []),
+        jd_preferred_skills=jd_json_summary.get("preferred_skills", []),
+        jd_all_skills=jd_json_summary.get("all_skills", []),
     )
 
-    parsed_resume = build_parsed_resume_summary(resume_data)
+    parsed_resume = build_parsed_resume_summary(resume_json_summary)
 
     return AnalyzeResponse(
         score_breakdown=score_result,
@@ -262,20 +235,19 @@ async def analyze_pdf(
 
         if not resume_text.strip():
             raise HTTPException(status_code=400, detail="Could not extract text from PDF.")
+        
+        resume_json_summary = build_resume_json_summary(parsed_text=resume_text)
+        print(json.dumps(resume_json_summary, indent=2))
+        jd_json_summary = build_jd_json_summary(parsed_text=job_description)
+        jd_json_summary["job_description"] = job_description
+        print(json.dumps(jd_json_summary, indent=2))
 
-        return build_analyze_response(resume_text, job_description)
+        analysis = build_analyze_response_from_json(resume_json_summary, jd_json_summary)
+        
+        return analysis
 
     except HTTPException:
         raise
-    except Exception as e:
-        print(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/analyze", response_model=AnalyzeResponse)
-def analyze_resume(payload: AnalyzeRequest):
-    try:
-        return build_analyze_response(payload.resume_text, payload.job_description)
     except Exception as e:
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))

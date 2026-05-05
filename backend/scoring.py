@@ -10,6 +10,216 @@ from bullet_scorer import score_bullets
 from embeddings import embed_texts, cosine_similarity
 import re
 
+
+def _clean_list(values) -> List[str]:
+    """Return a flat list of non-empty strings from nested list/dict/string values."""
+    cleaned: List[str] = []
+
+    if values is None:
+        return cleaned
+
+    if isinstance(values, str):
+        value = values.strip()
+        return [value] if value else []
+
+    if isinstance(values, dict):
+        for value in values.values():
+            cleaned.extend(_clean_list(value))
+        return cleaned
+
+    if isinstance(values, list):
+        for value in values:
+            cleaned.extend(_clean_list(value))
+        return cleaned
+
+    value = str(values).strip()
+    return [value] if value else []
+
+
+def _join_non_empty(parts: List[Optional[str]], sep: str = " | ") -> str:
+    return sep.join([str(p).strip() for p in parts if p and str(p).strip()])
+
+
+def _resume_summary_section_present(value) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, list):
+        return any(_resume_summary_section_present(v) for v in value)
+    if isinstance(value, dict):
+        return any(_resume_summary_section_present(v) for v in value.values())
+    return bool(value)
+
+
+def normalize_resume_data(resume_data: Dict) -> Dict:
+    """
+    Convert the JSON returned by build_resume_summary_prompt into the older
+    parser-shaped dict expected by the scoring functions.
+
+    The scorer originally expected keys like experience_bullets, project_bullets,
+    skills_text, education_text, etc. resume_summary returns title-cased keys like
+    Experience, Projects, Skills, and Education. This adapter supports both shapes.
+    """
+    if not isinstance(resume_data, dict):
+        return {}
+
+    # Already in the old parser format.
+    old_shape_keys = {
+        "experience_bullets",
+        "project_bullets",
+        "skills_text",
+        "education_text",
+        "experience_groups",
+        "project_groups",
+    }
+    if any(key in resume_data for key in old_shape_keys):
+        return resume_data
+
+    contact_entries = resume_data.get("Contact") or []
+    contact = contact_entries[0] if isinstance(contact_entries, list) and contact_entries else {}
+    if not isinstance(contact, dict):
+        contact = {}
+
+    experience_groups = []
+    experience_bullets = []
+    experience_text_lines = []
+    for item in resume_data.get("Experience") or []:
+        if not isinstance(item, dict):
+            continue
+        title = (item.get("Title") or "").strip()
+        company = (item.get("Company") or "").strip()
+        dates = (item.get("Dates") or "").strip()
+        bullets = _clean_list(item.get("Bullet Points"))
+        header = _join_non_empty([title, company, dates])
+
+        experience_groups.append({
+            "section": "experience",
+            "header": header,
+            "role": title,
+            "organization": company,
+            "dates": dates,
+            "bullets": bullets,
+        })
+        experience_bullets.extend(bullets)
+        if header:
+            experience_text_lines.append(header)
+        experience_text_lines.extend(bullets)
+
+    project_groups = []
+    project_bullets = []
+    projects_text_lines = []
+    for item in resume_data.get("Projects") or []:
+        if not isinstance(item, dict):
+            continue
+        title = (item.get("Title") or "").strip()
+        tech_stack = _clean_list(item.get("Technologies"))
+        details = _clean_list(item.get("Details"))
+        tech_text = ", ".join(tech_stack)
+        header = _join_non_empty([title, tech_text])
+
+        project_groups.append({
+            "section": "projects",
+            "header": header,
+            "title": title,
+            "metadata": tech_text,
+            "tech_stack": tech_text,
+            "bullets": details,
+        })
+        project_bullets.extend(details)
+        if header:
+            projects_text_lines.append(header)
+        projects_text_lines.extend(details)
+
+    skills = []
+    skills_text_lines = []
+    for item in resume_data.get("Skills") or []:
+        if isinstance(item, dict):
+            category = (item.get("Category") or "").strip()
+            skill_items = _clean_list(item.get("Skills"))
+            skills.extend(skill_items)
+            if category and skill_items:
+                skills_text_lines.append(f"{category}: {', '.join(skill_items)}")
+            elif skill_items:
+                skills_text_lines.append(", ".join(skill_items))
+        else:
+            skill_items = _clean_list(item)
+            skills.extend(skill_items)
+            skills_text_lines.extend(skill_items)
+
+    education_text_lines = []
+    for item in resume_data.get("Education") or []:
+        if not isinstance(item, dict):
+            continue
+        line = _join_non_empty([
+            item.get("Degree"),
+            item.get("University"),
+            item.get("Minor") and f"Minor: {item.get('Minor')}",
+            item.get("GPA") and f"GPA: {item.get('GPA')}",
+            item.get("Dates"),
+        ])
+        if line:
+            education_text_lines.append(line)
+
+    relevant_courses = _clean_list(resume_data.get("Relevant Courses"))
+
+    awards_text_lines = []
+    for item in resume_data.get("Awards") or []:
+        if isinstance(item, dict):
+            awards_text_lines.append(_join_non_empty([item.get("Award"), "; ".join(_clean_list(item.get("Details")))], sep=": "))
+        else:
+            awards_text_lines.extend(_clean_list(item))
+    awards_text_lines = [line for line in awards_text_lines if line]
+
+    certifications_text_lines = []
+    for item in resume_data.get("Certifications") or []:
+        if isinstance(item, dict):
+            certifications_text_lines.append(_join_non_empty([item.get("Certification"), "; ".join(_clean_list(item.get("Details")))], sep=": "))
+        else:
+            certifications_text_lines.extend(_clean_list(item))
+    certifications_text_lines = [line for line in certifications_text_lines if line]
+
+    present_sections = [
+        section_name
+        for section_name in [
+            "Contact", "Summary", "Education", "Experience", "Projects", "Skills",
+            "Relevant Courses", "Awards", "Certifications",
+        ]
+        if _resume_summary_section_present(resume_data.get(section_name))
+    ]
+    section_completeness = round((len(present_sections) / 9.0) * 100.0, 2)
+
+    current_or_recent_title = ""
+    if experience_groups:
+        current_or_recent_title = experience_groups[0].get("role") or ""
+
+    email = (contact.get("Email") or "").strip()
+
+    return {
+        "summary": resume_data.get("Summary", "") or "",
+        "email": email,
+        "phone": contact.get("Phone", "") or "",
+        "website": contact.get("Website/Portfolio", "") or "",
+        "social": _clean_list(contact.get("Social/Other")),
+        "skills": skills,
+        "skills_text": "\n".join(skills_text_lines),
+        "experience_bullets": experience_bullets,
+        "project_bullets": project_bullets,
+        "experience_groups": experience_groups,
+        "project_groups": project_groups,
+        "experience_text": "\n".join(experience_text_lines),
+        "projects_text": "\n".join(projects_text_lines),
+        "education_text": "\n".join(education_text_lines),
+        "relevant_courses_text": "\n".join(relevant_courses),
+        "awards_text": "\n".join(awards_text_lines),
+        "certifications_text": "\n".join(certifications_text_lines),
+        "current_or_recent_title": current_or_recent_title,
+        "sections": {name: True for name in present_sections},
+        "section_completeness": section_completeness,
+        "has_tables": False,
+        "has_images": False,
+    }
+
 def is_work_authorization_requirement(req_text: str) -> bool:
     t = req_text.lower()
 
@@ -41,7 +251,16 @@ def extract_resume_lines(resume_data: Dict) -> List[str]:
     # existing bullets
     lines.extend(extract_resume_bullets(resume_data))
 
-    for key in ["skills_text", "experience_text", "projects_text", "education_text"]:
+    for key in [
+        "summary",
+        "skills_text",
+        "experience_text",
+        "projects_text",
+        "education_text",
+        "relevant_courses_text",
+        "awards_text",
+        "certifications_text",
+    ]:
         text = resume_data.get(key)
         if not text:
             continue
@@ -152,7 +371,12 @@ def extract_resume_evidence(resume_data: Dict) -> Dict[str, List[str]]:
 
     education_lines = [
         line.strip()
-        for line in (resume_data.get("education_text") or "").split("\n")
+        for text in [
+            resume_data.get("education_text"),
+            resume_data.get("relevant_courses_text"),
+            resume_data.get("certifications_text"),
+        ]
+        for line in (text or "").split("\n")
         if line.strip()
     ]
 
@@ -356,7 +580,16 @@ def is_education_requirement(req_text: str, req_category: str) -> bool:
 
 def flatten_resume_for_semantics(resume_data: Dict) -> str:
     sections = []
-    for key in ["summary", "skills_text", "experience_text", "projects_text", "education_text"]:
+    for key in [
+        "summary",
+        "skills_text",
+        "experience_text",
+        "projects_text",
+        "education_text",
+        "relevant_courses_text",
+        "awards_text",
+        "certifications_text",
+    ]:
         value = resume_data.get(key)
         if value:
             sections.append(str(value))
@@ -407,6 +640,7 @@ def semantic_alignment_score(resume_data: Dict, job_description: str) -> float:
 
 
 def score_resume_against_jd(resume_data: Dict, job_description: str) -> ScoreBreakdown:
+    resume_data = normalize_resume_data(resume_data)
     jd = structure_job_description(job_description)
     bullets = extract_resume_bullets(resume_data)
     resume_lines = extract_resume_lines(resume_data)

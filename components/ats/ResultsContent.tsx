@@ -20,7 +20,72 @@ type BulletUiState = {
 
 type ResultsTab = "resume" | "analysis";
 
-function ParsedProjectList({ projects }: { projects: ParsedProjectEntry[] }) {
+type DiffPart = {
+  value: string;
+  added?: boolean;
+  removed?: boolean;
+};
+
+function getWordDiff(oldText: string, newText: string): DiffPart[] {
+  const oldWords = oldText.split(/\s+/);
+  const newWords = newText.split(/\s+/);
+
+  const dp: number[][] = Array.from({ length: oldWords.length + 1 }, () =>
+    Array(newWords.length + 1).fill(0),
+  );
+
+  for (let i = 1; i <= oldWords.length; i++) {
+    for (let j = 1; j <= newWords.length; j++) {
+      if (oldWords[i - 1] === newWords[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+
+  const parts: DiffPart[] = [];
+  let i = oldWords.length;
+  let j = newWords.length;
+
+  while (i > 0 && j > 0) {
+    if (oldWords[i - 1] === newWords[j - 1]) {
+      parts.unshift({ value: oldWords[i - 1] });
+      i--;
+      j--;
+    } else if (dp[i][j - 1] >= dp[i - 1][j]) {
+      parts.unshift({ value: newWords[j - 1], added: true });
+      j--;
+    } else {
+      parts.unshift({ value: oldWords[i - 1], removed: true });
+      i--;
+    }
+  }
+
+  while (i > 0) {
+    parts.unshift({ value: oldWords[i - 1], removed: true });
+    i--;
+  }
+
+  while (j > 0) {
+    parts.unshift({ value: newWords[j - 1], added: true });
+    j--;
+  }
+
+  return parts;
+}
+
+function ParsedProjectList({
+  projects,
+  weakBulletLookup,
+  bulletState,
+  onImprove,
+}: {
+  projects: ParsedProjectEntry[];
+  weakBulletLookup: Map<string, WeakBullet>;
+  bulletState: Record<string, BulletUiState>;
+  onImprove: (bullet: WeakBullet) => void;
+}) {
   if (!projects.length) {
     return <p className="text-slate-600">No projects detected.</p>;
   }
@@ -46,14 +111,22 @@ function ParsedProjectList({ projects }: { projects: ParsedProjectEntry[] }) {
 
           {project.bullets.length > 0 ? (
             <ul className="mt-3 space-y-2">
-              {project.bullets.map((bullet, bulletIdx) => (
-                <li
-                  key={`${project.title}-${bulletIdx}`}
-                  className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700"
-                >
-                  {bullet}
-                </li>
-              ))}
+              {project.bullets.map((bullet, bulletIdx) => {
+                const weakBullet = weakBulletLookup.get(bullet.trim());
+                const state = weakBullet
+                  ? bulletState[weakBullet.id]
+                  : undefined;
+
+                return (
+                  <ResumeBullet
+                    key={`${project.title}-${bulletIdx}`}
+                    text={bullet}
+                    weakBullet={weakBullet}
+                    state={state}
+                    onImprove={onImprove}
+                  />
+                );
+              })}
             </ul>
           ) : (
             <p className="mt-3 text-sm text-slate-500">No bullets found.</p>
@@ -66,8 +139,14 @@ function ParsedProjectList({ projects }: { projects: ParsedProjectEntry[] }) {
 
 function ParsedExperienceList({
   experience,
+  weakBulletLookup,
+  bulletState,
+  onImprove,
 }: {
   experience: ParsedExperienceEntry[];
+  weakBulletLookup: Map<string, WeakBullet>;
+  bulletState: Record<string, BulletUiState>;
+  onImprove: (bullet: WeakBullet) => void;
 }) {
   if (!experience.length) {
     return <p className="text-slate-600">No experience entries detected.</p>;
@@ -90,14 +169,22 @@ function ParsedExperienceList({
 
           {entry.bullets.length > 0 ? (
             <ul className="mt-3 space-y-2">
-              {entry.bullets.map((bullet, bulletIdx) => (
-                <li
-                  key={`${entry.role}-${bulletIdx}`}
-                  className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700"
-                >
-                  {bullet}
-                </li>
-              ))}
+              {entry.bullets.map((bullet, bulletIdx) => {
+                const weakBullet = weakBulletLookup.get(bullet.trim());
+                const state = weakBullet
+                  ? bulletState[weakBullet.id]
+                  : undefined;
+
+                return (
+                  <ResumeBullet
+                    key={`${entry.role}-${bulletIdx}`}
+                    text={bullet}
+                    weakBullet={weakBullet}
+                    state={state}
+                    onImprove={onImprove}
+                  />
+                );
+              })}
             </ul>
           ) : (
             <p className="mt-3 text-sm text-slate-500">No bullets found.</p>
@@ -132,6 +219,101 @@ function TabButton({
   );
 }
 
+function ResumeBullet({
+  text,
+  weakBullet,
+  state,
+  onImprove,
+}: {
+  text: string;
+  weakBullet?: WeakBullet;
+  state?: BulletUiState;
+  onImprove?: (bullet: WeakBullet) => void;
+}) {
+  const isWeak = !!weakBullet;
+  const isImproved = !!state?.improved;
+  const showDiff = isImproved && state.currentText !== weakBullet?.text;
+
+  const diffParts =
+    showDiff && weakBullet
+      ? getWordDiff(weakBullet.text, state.currentText)
+      : [];
+
+  return (
+    <li
+      className={`rounded-xl px-4 py-3 text-sm transition ${
+        isImproved
+          ? "border border-emerald-200 bg-emerald-50/70"
+          : isWeak
+            ? "border border-red-200 bg-red-50/70 hover:bg-red-100/70"
+            : "bg-slate-50 text-slate-700"
+      }`}
+    >
+      <div className="space-y-2">
+        {!showDiff ? (
+          <p className="text-slate-800">
+            {isImproved ? (state?.currentText ?? text) : text}
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-x-1 gap-y-1 leading-6">
+            {diffParts.map((part, idx) => {
+              if (part.added) {
+                return (
+                  <span
+                    key={idx}
+                    className="rounded bg-emerald-200 px-1 text-emerald-900"
+                  >
+                    {part.value}
+                  </span>
+                );
+              }
+
+              if (part.removed) {
+                return (
+                  <span
+                    key={idx}
+                    className="rounded bg-red-100 px-1 text-red-700 line-through"
+                  >
+                    {part.value}
+                  </span>
+                );
+              }
+
+              return (
+                <span key={idx} className="text-slate-800">
+                  {part.value}
+                </span>
+              );
+            })}
+          </div>
+        )}
+
+        {isWeak && weakBullet && (
+          <div className="flex flex-wrap items-center gap-2">
+            {!isImproved && (
+              <p className="text-xs text-red-700">
+                Needs improvement: {weakBullet.reasons.join(", ")}
+              </p>
+            )}
+
+            <button
+              type="button"
+              onClick={() => onImprove?.(weakBullet)}
+              className={`rounded-2xl px-3 py-1.5 text-xs font-medium ${
+                isImproved
+                  ? "bg-emerald-700 text-white hover:bg-emerald-800"
+                  : "bg-slate-900 text-white hover:bg-slate-800"
+              }`}
+            >
+              {state?.messages?.length ? "Continue plan mode" : "Improve"}
+            </button>
+          </div>
+        )}
+      </div>
+    </li>
+  );
+}
+
 export default function ResultsContent({
   result,
   jobDescription,
@@ -151,6 +333,14 @@ export default function ResultsContent({
     }
     return entries;
   }, [result]);
+
+  const weakBulletLookup = useMemo(() => {
+    const map = new Map<string, WeakBullet>();
+    for (const bullet of result.weak_bullet_details) {
+      map.set(bullet.text.trim(), bullet);
+    }
+    return map;
+  }, [result.weak_bullet_details]);
 
   const [bulletState, setBulletState] =
     useState<Record<string, BulletUiState>>(initialBulletState);
@@ -328,6 +518,9 @@ export default function ResultsContent({
                       </p>
                       <ParsedExperienceList
                         experience={result.parsed_resume.experience}
+                        weakBulletLookup={weakBulletLookup}
+                        bulletState={bulletState}
+                        onImprove={openPlanMode}
                       />
                     </div>
 
@@ -337,6 +530,9 @@ export default function ResultsContent({
                       </p>
                       <ParsedProjectList
                         projects={result.parsed_resume.projects}
+                        weakBulletLookup={weakBulletLookup}
+                        bulletState={bulletState}
+                        onImprove={openPlanMode}
                       />
                     </div>
                   </div>

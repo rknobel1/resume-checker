@@ -590,12 +590,12 @@ def parse_resume(resume_text: str) -> Dict:
     normalized = normalize_text(resume_text)
     sections = detect_sections(normalized)
 
-    summary_text = sections.get("summary", "")
-    skills_text = sections.get("skills", "")
-    experience_text = sections.get("experience", "")
-    projects_text = sections.get("projects", "")
-    education_text = sections.get("education", "")
-    certifications_text = sections.get("certifications", "")
+    summary_text = sections.get("Summary", "")
+    skills_text = sections.get("Skills", "")
+    experience_text = sections.get("Experience", "")
+    projects_text = sections.get("Projects", "")
+    education_text = sections.get("Education", "")
+    certifications_text = sections.get("Certifications", "")
 
     experience_groups = extract_experience_groups(experience_text)
     project_groups = extract_project_groups(projects_text)
