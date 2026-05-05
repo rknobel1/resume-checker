@@ -32,22 +32,6 @@ export default function UploadForm({
 
   const selectedFileName = file?.name ?? "No file selected";
 
-  function handleDrop(e: React.DragEvent<HTMLLabelElement>) {
-    e.preventDefault();
-    setIsDragging(false);
-
-    const droppedFile = e.dataTransfer.files?.[0];
-
-    if (!droppedFile) return;
-
-    if (droppedFile.type !== "application/pdf") {
-      onFileChange(null);
-      return;
-    }
-
-    onFileChange(droppedFile);
-  }
-
   return (
     <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.05fr_0.95fr]">
       <div className="flex flex-col justify-center">

@@ -177,7 +177,7 @@ def bullet_has_grounded_tech_context(
         [
             bullet_text or "",
             current_bullet or "",
-            " ".join(str(m.get("content", "")) for m in history[-8:]),
+            " ".join(str(m.get("content", "")) for m in history[-20:]),
         ]
     ).lower()
 
@@ -201,7 +201,7 @@ def build_plan_mode_prompt(
     history: List[dict],
 ) -> str:
     history_text = "\n".join(
-        f"{msg['role'].upper()}: {msg['content']}" for msg in history[-8:]
+        f"{msg['role'].upper()}: {msg['content']}" for msg in history[-20:]
     )
     reasons_text = "; ".join(bullet_reasons) if bullet_reasons else "General weakness"
 

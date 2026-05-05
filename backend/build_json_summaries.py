@@ -93,8 +93,6 @@ def build_resume_json_summary(parsed_text: str) -> str:
         print("Error parsing pdf resume extraction into JSON")
 
 
-
-
 def build_jd_summary_prompt(parsed_text: str) -> str:
     prompt = """
         Your task is to take the given job description and determine the following information: 

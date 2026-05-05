@@ -119,7 +119,6 @@ def _specificity_score(words: List[str], has_metric: bool, has_tool: bool) -> fl
 def _fragment_penalty(text: str) -> float:
     """
     Penalize bullets that look like fragments rather than action statements.
-    Example: '< 1 second Largest Contentful Paint through optimized asset loading'
     """
     first = _first_word(text)
     if not first:
