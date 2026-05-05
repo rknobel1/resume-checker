@@ -187,7 +187,7 @@ def build_parsed_resume_summary(resume_data: dict) -> ParsedResumeSummary:
 
 def build_analyze_response_from_json(resume_json_summary: dict, jd_json_summary: dict) -> AnalyzeResponse:
     
-    score_result = score_resume_against_jd(resume_json_summary, jd_json_summary.get("job_description"))
+    score_result = score_resume_against_jd(resume_json_summary, jd_json_summary)
 
     weak_bullets, weak_bullet_details, bullet_reasons = analyze_weak_bullets(resume_json_summary)
 

@@ -1,10 +1,9 @@
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Union
 from models import (
     JobDescriptionStructured,
     RequirementMatch,
     ScoreBreakdown,
 )
-from jd_structurer import structure_job_description
 from evidence_scorer import best_match_for_requirement, classify_evidence_strength
 from bullet_scorer import score_bullets
 from embeddings import embed_texts, cosine_similarity
@@ -90,7 +89,7 @@ def normalize_resume_data(resume_data: Dict) -> Dict:
         title = (item.get("Title") or "").strip()
         company = (item.get("Company") or "").strip()
         dates = (item.get("Dates") or "").strip()
-        bullets = _clean_list(item.get("Bullet Points"))
+        bullets = _clean_list(item.get("Bullet Points") or item.get("Details"))
         header = _join_non_empty([title, company, dates])
 
         experience_groups.append({
@@ -219,6 +218,75 @@ def normalize_resume_data(resume_data: Dict) -> Dict:
         "has_tables": False,
         "has_images": False,
     }
+
+
+def jd_summary_to_structured(jd_data: Dict) -> JobDescriptionStructured:
+    """
+    Convert the initial JD JSON summary into the structured shape used by the scorer.
+
+    Expected input shape:
+    {
+        "required_lines": [...],
+        "preferred_lines": [...],
+        "other_lines": [...],
+        "required_skills": [...],
+        "preferred_skills": [...],
+        "all_skills": [...],
+    }
+    """
+    if not isinstance(jd_data, dict):
+        jd_data = {}
+
+    def clean_items(values) -> List[str]:
+        return [
+            item.strip()
+            for item in _clean_list(values)
+            if item and item.strip()
+        ]
+
+    requirements = []
+    seen = set()
+
+    def add_requirement(text: str, importance: str, category: str = "skill") -> None:
+        text = (text or "").strip()
+        if not text:
+            return
+
+        key = (importance, normalize_skill_text(text))
+        if key in seen:
+            return
+
+        seen.add(key)
+        requirements.append({
+            "text": text,
+            "category": category,
+            "importance": importance,
+            "normalized_key": normalize_skill_text(text),
+        })
+
+    for skill in clean_items(jd_data.get("required_skills")):
+        add_requirement(skill, "required", "skill")
+
+    for line in clean_items(jd_data.get("required_lines")):
+        add_requirement(line, "required", "responsibility")
+
+    for skill in clean_items(jd_data.get("preferred_skills")):
+        add_requirement(skill, "preferred", "skill")
+
+    for line in clean_items(jd_data.get("preferred_lines")):
+        add_requirement(line, "preferred", "responsibility")
+
+    # If the parser only populated all_skills, treat them as required so scoring still works.
+    if not requirements:
+        for skill in clean_items(jd_data.get("all_skills")):
+            add_requirement(skill, "required", "skill")
+
+    return JobDescriptionStructured(
+        job_title=jd_data.get("job_title"),
+        seniority=jd_data.get("seniority"),
+        min_years_experience=jd_data.get("min_years_experience"),
+        requirements=requirements,
+    )
 
 def is_work_authorization_requirement(req_text: str) -> bool:
     t = req_text.lower()
@@ -639,9 +707,28 @@ def semantic_alignment_score(resume_data: Dict, job_description: str) -> float:
     return round(max(0.0, min(100.0, sim * 100.0)), 2)
 
 
-def score_resume_against_jd(resume_data: Dict, job_description: str) -> ScoreBreakdown:
+def score_resume_against_jd(resume_data: Dict, jd_data: Union[Dict, str]) -> ScoreBreakdown:
     resume_data = normalize_resume_data(resume_data)
-    jd = structure_job_description(job_description)
+
+    # Prefer the already-extracted JD JSON summary. Keep string support as a
+    # defensive fallback, but do not make a second LLM structuring call.
+    if isinstance(jd_data, dict):
+        jd = jd_summary_to_structured(jd_data)
+        job_description_text = jd_data.get("job_description") or "\n".join(
+            _clean_list([
+                jd_data.get("required_lines"),
+                jd_data.get("preferred_lines"),
+                jd_data.get("other_lines"),
+                jd_data.get("required_skills"),
+                jd_data.get("preferred_skills"),
+            ])
+        )
+    else:
+        job_description_text = jd_data or ""
+        jd = jd_summary_to_structured({
+            "required_lines": [job_description_text],
+            "job_description": job_description_text,
+        })
     bullets = extract_resume_bullets(resume_data)
     resume_lines = extract_resume_lines(resume_data)
     evidence_map = extract_resume_evidence(resume_data)
@@ -737,7 +824,7 @@ def score_resume_against_jd(resume_data: Dict, job_description: str) -> ScoreBre
 
     required_coverage = round(sum(required_scores) / max(len(required_scores), 1), 2)
     preferred_coverage = round(sum(preferred_scores) / max(len(preferred_scores), 1), 2)
-    semantic_alignment = semantic_alignment_score(resume_data, job_description)
+    semantic_alignment = semantic_alignment_score(resume_data, job_description_text)
     evidence_strength = round(sum(evidence_scores) / max(len(evidence_scores), 1), 2)
     bullet_quality = score_bullets(bullets)
     formatting = formatting_score(resume_data)
