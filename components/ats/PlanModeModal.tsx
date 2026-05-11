@@ -1,13 +1,19 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChatMessage, PlanModeResponse, WeakBullet } from "./types";
+import {
+  ChatMessage,
+  PlanModeResponse,
+  WeakBullet,
+  AnalyzeResponse,
+  JDJsonSummary,
+} from "./types";
 
 type Props = {
   isOpen: boolean;
   bullet: WeakBullet | null;
   currentBullet: string;
-  jobDescription: string;
+  jdJsonSummary: JDJsonSummary;
   messages: ChatMessage[];
   options: string[];
   loading: boolean;
@@ -45,7 +51,7 @@ export default function PlanModeModal({
   isOpen,
   bullet,
   currentBullet,
-  jobDescription,
+  jdJsonSummary,
   messages,
   options,
   loading,
@@ -116,7 +122,7 @@ export default function PlanModeModal({
           bullet_text: bullet?.text,
           current_bullet: currentBullet,
           bullet_reasons: bullet?.reasons,
-          job_description: jobDescription,
+          jd_json_summary: jdJsonSummary,
           user_message: userText,
           conversation_history: [...messages, userMessage],
         }),

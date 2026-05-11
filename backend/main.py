@@ -205,6 +205,7 @@ def build_analyze_response_from_json(resume_json_summary: dict, jd_json_summary:
         weak_bullets=weak_bullets,
         weak_bullet_details=weak_bullet_details,
         parsed_resume=parsed_resume,
+        jd_json_summary = jd_json_summary,
         debug=debug,
     )
 
@@ -250,7 +251,7 @@ def plan_mode_chat(req: PlanModeRequest):
             bullet_text=req.bullet_text,
             current_bullet=req.current_bullet or req.bullet_text,
             bullet_reasons=req.bullet_reasons,
-            job_description=req.job_description,
+            jd_json_summary=req.jd_json_summary,
             user_message=req.user_message,
             history=[msg.model_dump() for msg in req.conversation_history],
         )

@@ -75,6 +75,7 @@ def stringify_list_of_strings(list: List[str]) -> str:
 
 def build_rewrite_prompt(
     bullet: str,
+    chat_history: List[dict],
     required_lines: List[str],
     preferred_lines: List[str],
     required_skills: List[str],
@@ -88,29 +89,38 @@ def build_rewrite_prompt(
     required_skills_text = stringify_list_of_strings(required_skills)
     preferred_skills_text = stringify_list_of_strings(preferred_skills)
 
+    history_text = "\n".join(
+        f"{msg['role'].upper()}: {msg['content']}" for msg in chat_history[-20:]
+    )
+
     return f"""
-You are improving a resume bullet for ATS alignment.
+You are improving a resume bullet for ATS alignment. Your task is to generate 3 suggestions to improve the given bullet point and more closely align to the job description.
 
 Rules:
-- Do not invent tools, metrics, responsibilities, outcomes, team size, or scope.
-- Only use facts already present in the bullet.
-- You may improve wording, clarity, ordering, and action verbs.
-- If a relevant keyword from the target role is already implied by the bullet, you may phrase it more explicitly.
-- Do not add a metric unless the original bullet already contains measurable evidence.
-- Keep it concise and professional.
+- Use only the original bullet, current draft, and gathered facts.
+- Do not invent metrics, tools, outcomes, responsibilities, or scope.
+- Generate exactly 3 options.
+- Make them concise, action-oriented, and ATS-friendly.
 - Return valid JSON only.
 
-Required JSON format:
+JSON Format:
 {{
-  "proposed_text": "string",
-  "reason": "string",
-  "confidence": 0.0
+  "reply": "short assistant reply",
+  "options": [
+    "option 1",
+    "option 2",
+    "option 3"
+  ],
+  "current_bullet": "best current bullet"
 }}
 
 Use ONLY the following information.
 
 Resume bullet:
 {bullet}
+
+Current chat history with the user: 
+{history_text}
 
 Missing skills from the job description:
 {missing_skills_text}
@@ -135,64 +145,77 @@ Preferred skills:
 
 
 def generate_suggestions(
-    weak_bullets: List[str],
+    bullet: str,
     jd_json_summary: dict,
     missing_skills: Optional[List[str]] = None,
-    bullet_reasons: Optional[dict] = None,
-    max_suggestions: int = 5,
+    bullet_reasons: Optional[List[str] | str] = None,
+    chat_history: Optional[List[dict]] = None,
 ) -> List[Suggestion]:
-    suggestions: List[Suggestion] = []
     missing_skills = missing_skills or []
-    bullet_reasons = bullet_reasons or {}
+    chat_history = chat_history or []
 
-    for idx, bullet in enumerate(weak_bullets[:max_suggestions], start=1):
-        prompt = build_rewrite_prompt(
-            bullet=bullet,
-            required_lines = jd_json_summary.get("required_lines"),
-            preferred_lines = jd_json_summary.get("preferred_lines"),
-            required_skills = jd_json_summary.get("required_skills"),
-            preferred_skills = jd_json_summary.get("preferred_skills"),
-            missing_skills=missing_skills,
-            why_flagged=bullet_reasons.get(bullet),
-        )
+    if isinstance(bullet_reasons, list):
+        why_flagged = "; ".join(bullet_reasons)
+    else:
+        why_flagged = bullet_reasons
 
-        try:
-            raw = ask_ollama(prompt, task="rewrite_generation")
-            parsed = extract_json(raw)
+    prompt = build_rewrite_prompt(
+        bullet=bullet,
+        chat_history=chat_history,
+        required_lines=jd_json_summary.get("required_lines", []),
+        preferred_lines=jd_json_summary.get("preferred_lines", []),
+        required_skills=jd_json_summary.get("required_skills", []),
+        preferred_skills=jd_json_summary.get("preferred_skills", []),
+        missing_skills=missing_skills,
+        why_flagged=why_flagged,
+    )
 
-            proposed_text = parsed.get("proposed_text", bullet).strip()
-            reason = parsed.get("reason", "Improved wording for clarity and ATS alignment.").strip()
-            confidence = float(parsed.get("confidence", 0.7))
+    try:
+        raw = ask_ollama(prompt, task="rewrite_generation")
+        parsed = extract_json(raw)
 
+        options = parsed.get("options", [])
+        if not isinstance(options, list):
+            options = []
+
+        options = [str(opt).strip() for opt in options[:3] if str(opt).strip()]
+
+        suggestions: List[Suggestion] = []
+
+        for idx, option in enumerate(options, start=1):
             suggestions.append(
                 Suggestion(
                     id=f"sugg-{idx}",
                     section="experience",
                     original_text=bullet,
-                    proposed_text=proposed_text,
-                    reason=reason,
+                    proposed_text=option,
+                    reason=parsed.get(
+                        "reply",
+                        "Improved wording for clarity and ATS alignment.",
+                    ),
                     estimated_score_impact=estimate_score_impact(
                         original_text=bullet,
-                        proposed_text=proposed_text,
+                        proposed_text=option,
                         missing_skills=missing_skills,
                     ),
-                    confidence=confidence,
-                )
-            )
-        except Exception:
-            suggestions.append(
-                Suggestion(
-                    id=f"sugg-{idx}",
-                    section="experience",
-                    original_text=bullet,
-                    proposed_text=bullet,
-                    reason="Model could not confidently rewrite this bullet yet.",
-                    estimated_score_impact=0.0,
-                    confidence=0.0,
+                    confidence=0.75,
                 )
             )
 
-    return suggestions
+        return suggestions
+
+    except Exception:
+        return [
+            Suggestion(
+                id="sugg-1",
+                section="experience",
+                original_text=bullet,
+                proposed_text=bullet,
+                reason="Model could not confidently rewrite this bullet yet.",
+                estimated_score_impact=0.0,
+                confidence=0.0,
+            )
+        ]
 
 
 def build_plan_mode_prompt(
@@ -219,7 +242,6 @@ Rules:
   2. tools/technologies
   3. ownership
   4. measurable outcome
-- Only return 3 improved bullet options when sufficient concrete detail is explicitly known.
 - If the user asks a vague follow-up such as:
   - "what technologies?"
   - "like what?"
@@ -237,7 +259,7 @@ Decide between these modes:
 
 1. Use "question" when important bullet details are still missing.
 2. Use "clarify" when the user's latest message is vague, ambiguous, forgetful, or asks for examples not grounded in the bullet/context.
-3. Use "options" only when enough grounded detail exists to write strong bullets without inventing facts.
+3. Use "ready" only when enough grounded detail exists to write strong bullets without inventing facts.
 
 If more detail is needed, return:
 {{
@@ -259,14 +281,10 @@ If the user is asking for clarification/examples but the answer is not grounded 
 
 If enough detail exists, return:
 {{
-  "mode": "options",
+  "mode": "ready",
   "reply": "short assistant reply",
   "question": null,
-  "options": [
-    "option 1",
-    "option 2",
-    "option 3"
-  ],
+  "options": [],
   "current_bullet": "{current_bullet}"
 }}
 
@@ -294,42 +312,57 @@ def plan_mode_reply(
     bullet_text: str,
     current_bullet: str,
     bullet_reasons: List[str],
-    job_description: str,
+    jd_json_summary: dict,
     user_message: str,
     history: List[dict],
 ) -> dict:
 
-    prompt = build_plan_mode_prompt(
-        bullet_text=bullet_text,
-        current_bullet=current_bullet,
-        bullet_reasons=bullet_reasons,
-        job_description=job_description,
-        user_message=user_message,
-        history=history,
-    )
-
     try:
+        prompt = build_plan_mode_prompt(
+            bullet_text=bullet_text,
+            current_bullet=current_bullet,
+            bullet_reasons=bullet_reasons,
+            job_description=jd_json_summary.get("job_description"),
+            user_message=user_message,
+            history=history,
+        )
         raw = ask_ollama(prompt, task="plan_mode")
         parsed = extract_json(raw)
 
         mode = parsed.get("mode", "question")
         reply = str(parsed.get("reply", "")).strip() or "Let’s improve this bullet."
         question = parsed.get("question")
-        options = parsed.get("options", [])
         next_bullet = str(parsed.get("current_bullet", current_bullet)).strip()
 
-        if mode not in {"question", "clarify", "options"}:
+        if mode not in {"question", "clarify", "ready"}:
             mode = "question"
 
-        if not isinstance(options, list):
-            options = []
+        if mode != "ready": 
+            return {
+                "mode": mode,
+                "reply": reply,
+                "question": question,
+                "options": [],
+                "current_bullet": next_bullet or current_bullet,
+            }
+        
+        suggestions = generate_suggestions(
+            bullet=next_bullet or current_bullet,
+            jd_json_summary=jd_json_summary,
+            missing_skills=(
+                jd_json_summary.get("missing_required", [])
+                + jd_json_summary.get("missing_preferred", [])
+            ),
+            bullet_reasons=bullet_reasons,
+            chat_history=history,
+        )
 
-        options = [str(opt).strip() for opt in options[:3] if str(opt).strip()]
+        options = [s.proposed_text for s in suggestions]
 
         return {
-            "mode": mode,
-            "reply": reply,
-            "question": question,
+            "mode": "options",
+            "reply": "Here are three stronger options.",
+            "question": None,
             "options": options,
             "current_bullet": next_bullet or current_bullet,
         }

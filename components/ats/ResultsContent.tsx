@@ -316,10 +316,8 @@ function ResumeBullet({
 
 export default function ResultsContent({
   result,
-  jobDescription,
 }: {
   result: AnalyzeResponse;
-  jobDescription: string;
 }) {
   const initialBulletState = useMemo(() => {
     const entries: Record<string, BulletUiState> = {};
@@ -752,7 +750,7 @@ export default function ResultsContent({
         isOpen={!!selectedBullet}
         bullet={selectedBullet}
         currentBullet={selectedState?.currentText ?? selectedBullet?.text ?? ""}
-        jobDescription={jobDescription}
+        jdJsonSummary={result.jd_json_summary}
         messages={selectedState?.messages ?? []}
         options={selectedState?.options ?? []}
         loading={modalLoading}

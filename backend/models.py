@@ -96,6 +96,7 @@ class AnalyzeResponse(BaseModel):
 
     weak_bullets: List[str] = Field(default_factory=list)
     weak_bullet_details: List[WeakBullet] = Field(default_factory=list)
+    jd_json_summary: dict = Field(default_factory=dict)
 
     parsed_resume: Optional[ParsedResumeSummary] = None
 
@@ -112,7 +113,7 @@ class PlanModeRequest(BaseModel):
     bullet_text: str
     current_bullet: Optional[str] = None
     bullet_reasons: List[str] = Field(default_factory=list)
-    job_description: str
+    jd_json_summary: dict
     user_message: str
     conversation_history: List[ChatMessage] = Field(default_factory=list)
 

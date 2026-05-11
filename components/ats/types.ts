@@ -71,12 +71,20 @@ export type ParsedResumeSummary = {
   parser_notes: string[];
 };
 
+export type JDJsonSummary = {
+  required_skills: string[];
+  preferred_skills: string[];
+  all_skills: string[];
+  job_description: string;
+};
+
 export type AnalyzeResponse = {
   score_breakdown: ScoreBreakdown;
   missing_keywords: string[];
   weak_bullets: string[];
   weak_bullet_details: WeakBullet[];
   suggestions: Suggestion[];
+  jd_json_summary: JDJsonSummary,
   parsed_resume?: ParsedResumeSummary | null;
   debug?: {
     resume_skills: string[];
@@ -92,7 +100,7 @@ export type ChatMessage = {
 };
 
 export type PlanModeResponse = {
-  mode: "question" | "options";
+  mode: "question" | "clarify" | "options";
   reply: string;
   question?: string | null;
   options: string[];
