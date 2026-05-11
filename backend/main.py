@@ -40,7 +40,6 @@ app.add_middleware(
 def analyze_weak_bullets(resume_data: dict):
     weak_bullets = []
     weak_bullet_details = []
-    bullet_reasons = {}
 
     grouped_entries = []
 
@@ -108,9 +107,9 @@ def analyze_weak_bullets(resume_data: dict):
                         reasons=reasons,
                     )
                 )
-                bullet_reasons[bullet] = "; ".join(reasons)
+                
 
-    return weak_bullets, weak_bullet_details, bullet_reasons
+    return weak_bullets, weak_bullet_details
 
 def build_parsed_resume_summary(resume_data: dict) -> ParsedResumeSummary:
     def clean_list(items):
@@ -189,15 +188,7 @@ def build_analyze_response_from_json(resume_json_summary: dict, jd_json_summary:
     
     score_result = score_resume_against_jd(resume_json_summary, jd_json_summary)
 
-    weak_bullets, weak_bullet_details, bullet_reasons = analyze_weak_bullets(resume_json_summary)
-
-    suggestions = generate_suggestions(
-        weak_bullets=weak_bullets,
-        job_description=jd_json_summary.get("job_description"),
-        missing_skills=score_result.missing_required + score_result.missing_preferred,
-        bullet_reasons=bullet_reasons,
-        max_suggestions=5,
-    )
+    weak_bullets, weak_bullet_details = analyze_weak_bullets(resume_json_summary)
 
     debug = DebugInfo(
         resume_skills=resume_json_summary.get("skills", []),
@@ -213,7 +204,6 @@ def build_analyze_response_from_json(resume_json_summary: dict, jd_json_summary:
         missing_keywords=score_result.missing_required + score_result.missing_preferred,
         weak_bullets=weak_bullets,
         weak_bullet_details=weak_bullet_details,
-        suggestions=suggestions,
         parsed_resume=parsed_resume,
         debug=debug,
     )

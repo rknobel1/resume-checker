@@ -97,8 +97,6 @@ class AnalyzeResponse(BaseModel):
     weak_bullets: List[str] = Field(default_factory=list)
     weak_bullet_details: List[WeakBullet] = Field(default_factory=list)
 
-    suggestions: List[Suggestion] = Field(default_factory=list)
-
     parsed_resume: Optional[ParsedResumeSummary] = None
 
     debug: Optional[DebugInfo] = None

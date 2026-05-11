@@ -1,6 +1,6 @@
 import json
 import re
-from typing import List, Optional
+from typing import List, Optional, Dict
 from models import Suggestion
 from ollama_client import ask_ollama
 
@@ -69,13 +69,24 @@ def estimate_score_impact(
     return round(min(gain, 8.0), 1)
 
 
+def stringify_list_of_strings(list: List[str]) -> str:
+    return ", ".join(list) if list else "None"
+
+
 def build_rewrite_prompt(
     bullet: str,
-    job_description: str,
+    required_lines: List[str],
+    preferred_lines: List[str],
+    required_skills: List[str],
+    preferred_skills: List[str],
     missing_skills: List[str],
     why_flagged: Optional[str] = None,
 ) -> str:
-    missing_skills_text = ", ".join(missing_skills[:8]) if missing_skills else "None"
+    missing_skills_text = stringify_list_of_strings(missing_skills)
+    required_lines_text = stringify_list_of_strings(required_lines)
+    preferred_lines_text = stringify_list_of_strings(preferred_lines)
+    required_skills_text = stringify_list_of_strings(required_skills)
+    preferred_skills_text = stringify_list_of_strings(preferred_skills)
 
     return f"""
 You are improving a resume bullet for ATS alignment.
@@ -89,12 +100,6 @@ Rules:
 - Keep it concise and professional.
 - Return valid JSON only.
 
-Target missing skills:
-{missing_skills_text}
-
-Why this bullet was flagged:
-{why_flagged or "General weakness / low ATS alignment"}
-
 Required JSON format:
 {{
   "proposed_text": "string",
@@ -102,17 +107,36 @@ Required JSON format:
   "confidence": 0.0
 }}
 
+Use ONLY the following information.
+
 Resume bullet:
 {bullet}
 
-Job description:
-{job_description}
+Missing skills from the job description:
+{missing_skills_text}
+
+Why this bullet was flagged:
+{why_flagged or "General weakness / low ATS alignment"}
+
+The following is a summary of the key points of the job description.
+
+Required specifications:
+{required_lines_text}
+
+Preferred specifications:
+{preferred_lines_text}
+
+Required skills: 
+{required_skills_text}
+
+Preferred skills:
+{preferred_skills_text}
 """.strip()
 
 
 def generate_suggestions(
     weak_bullets: List[str],
-    job_description: str,
+    jd_json_summary: dict,
     missing_skills: Optional[List[str]] = None,
     bullet_reasons: Optional[dict] = None,
     max_suggestions: int = 5,
@@ -124,7 +148,10 @@ def generate_suggestions(
     for idx, bullet in enumerate(weak_bullets[:max_suggestions], start=1):
         prompt = build_rewrite_prompt(
             bullet=bullet,
-            job_description=job_description,
+            required_lines = jd_json_summary.get("required_lines"),
+            preferred_lines = jd_json_summary.get("preferred_lines"),
+            required_skills = jd_json_summary.get("required_skills"),
+            preferred_skills = jd_json_summary.get("preferred_skills"),
             missing_skills=missing_skills,
             why_flagged=bullet_reasons.get(bullet),
         )
@@ -166,30 +193,6 @@ def generate_suggestions(
             )
 
     return suggestions
-
-
-def bullet_has_grounded_tech_context(
-    bullet_text: str,
-    current_bullet: str,
-    history: List[dict],
-) -> bool:
-    combined = " ".join(
-        [
-            bullet_text or "",
-            current_bullet or "",
-            " ".join(str(m.get("content", "")) for m in history[-20:]),
-        ]
-    ).lower()
-
-    tech_terms = [
-        "python", "java", "javascript", "typescript", "react", "next.js",
-        "node", "sql", "postgres", "mysql", "mongodb", "aws", "azure",
-        "gcp", "docker", "kubernetes", "git", "terraform", "pandas",
-        "numpy", "pytorch", "tensorflow", "scikit", "spark", "airflow",
-        "tableau", "power bi", "excel", "linux", "rest api", "graphql",
-    ]
-
-    return any(term in combined for term in tech_terms)
 
 
 def build_plan_mode_prompt(
