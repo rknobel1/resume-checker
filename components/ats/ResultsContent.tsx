@@ -20,61 +20,6 @@ type BulletUiState = {
 
 type ResultsTab = "resume" | "analysis";
 
-type DiffPart = {
-  value: string;
-  added?: boolean;
-  removed?: boolean;
-};
-
-function getWordDiff(oldText: string, newText: string): DiffPart[] {
-  const oldWords = oldText.split(/\s+/);
-  const newWords = newText.split(/\s+/);
-
-  const dp: number[][] = Array.from({ length: oldWords.length + 1 }, () =>
-    Array(newWords.length + 1).fill(0),
-  );
-
-  for (let i = 1; i <= oldWords.length; i++) {
-    for (let j = 1; j <= newWords.length; j++) {
-      if (oldWords[i - 1] === newWords[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1] + 1;
-      } else {
-        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
-      }
-    }
-  }
-
-  const parts: DiffPart[] = [];
-  let i = oldWords.length;
-  let j = newWords.length;
-
-  while (i > 0 && j > 0) {
-    if (oldWords[i - 1] === newWords[j - 1]) {
-      parts.unshift({ value: oldWords[i - 1] });
-      i--;
-      j--;
-    } else if (dp[i][j - 1] >= dp[i - 1][j]) {
-      parts.unshift({ value: newWords[j - 1], added: true });
-      j--;
-    } else {
-      parts.unshift({ value: oldWords[i - 1], removed: true });
-      i--;
-    }
-  }
-
-  while (i > 0) {
-    parts.unshift({ value: oldWords[i - 1], removed: true });
-    i--;
-  }
-
-  while (j > 0) {
-    parts.unshift({ value: newWords[j - 1], added: true });
-    j--;
-  }
-
-  return parts;
-}
-
 function ParsedProjectList({
   projects,
   weakBulletLookup,
@@ -232,12 +177,6 @@ function ResumeBullet({
 }) {
   const isWeak = !!weakBullet;
   const isImproved = !!state?.improved;
-  const showDiff = isImproved && state.currentText !== weakBullet?.text;
-
-  const diffParts =
-    showDiff && weakBullet
-      ? getWordDiff(weakBullet.text, state.currentText)
-      : [];
 
   return (
     <li
@@ -250,43 +189,9 @@ function ResumeBullet({
       }`}
     >
       <div className="space-y-2">
-        {!showDiff ? (
-          <p className="text-slate-800">
-            {isImproved ? (state?.currentText ?? text) : text}
-          </p>
-        ) : (
-          <div className="flex flex-wrap gap-x-1 gap-y-1 leading-6">
-            {diffParts.map((part, idx) => {
-              if (part.added) {
-                return (
-                  <span
-                    key={idx}
-                    className="rounded bg-emerald-200 px-1 text-emerald-900"
-                  >
-                    {part.value}
-                  </span>
-                );
-              }
-
-              if (part.removed) {
-                return (
-                  <span
-                    key={idx}
-                    className="rounded bg-red-100 px-1 text-red-700 line-through"
-                  >
-                    {part.value}
-                  </span>
-                );
-              }
-
-              return (
-                <span key={idx} className="text-slate-800">
-                  {part.value}
-                </span>
-              );
-            })}
-          </div>
-        )}
+        <p className="text-slate-800">
+          {isImproved ? (state?.currentText ?? text) : text}
+        </p>
 
         {isWeak && weakBullet && (
           <div className="flex flex-wrap items-center gap-2">
