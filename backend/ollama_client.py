@@ -5,7 +5,7 @@ import requests
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
 DEFAULT_MODEL = os.getenv("OLLAMA_MODEL_DEFAULT", "qwen2.5:14b-instruct")
-JD_STRUCTURER_MODEL = os.getenv("OLLAMA_MODEL_JD", DEFAULT_MODEL)
+JSON_STRUCTURER_MODEL = os.getenv("OLLAMA_MODEL_JSON", DEFAULT_MODEL)
 REWRITE_MODEL = os.getenv("OLLAMA_MODEL_REWRITE", DEFAULT_MODEL)
 PLAN_MODE_MODEL = os.getenv("OLLAMA_MODEL_PLAN", DEFAULT_MODEL)
 
@@ -14,7 +14,7 @@ def get_model_for_task(task: Optional[str] = None) -> str:
     task = (task or "").strip().lower()
 
     task_model_map = {
-        "jd_structuring": JD_STRUCTURER_MODEL,
+        "json_structuring": JSON_STRUCTURER_MODEL,
         "rewrite_generation": REWRITE_MODEL,
         "plan_mode": PLAN_MODE_MODEL,
     }

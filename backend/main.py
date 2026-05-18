@@ -6,7 +6,6 @@ from fastapi.middleware.cors import CORSMiddleware
 import traceback
 
 from models import (
-    AnalyzeRequest,
     AnalyzeResponse,
     PlanModeRequest,
     PlanModeResponse,
@@ -18,7 +17,7 @@ from models import (
 )
 
 from scoring import score_resume_against_jd
-from suggestion_engine import generate_suggestions, plan_mode_reply
+from suggestion_engine import plan_mode_reply
 from pdf_utils import extract_text_from_pdf_bytes
 from bullet_scorer import score_bullet
 from build_json_summaries import build_resume_json_summary, build_jd_json_summary

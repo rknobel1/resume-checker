@@ -84,7 +84,7 @@ def build_resume_json_summary(parsed_text: str) -> str:
     try:
         prompt = build_resume_summary_prompt(parsed_text)
 
-        raw = ask_ollama(prompt, task="rewrite_generation")
+        raw = ask_ollama(prompt, task="json_structuring")
         raw_json = json.loads(raw)
 
         return raw_json
@@ -127,7 +127,7 @@ def build_jd_json_summary(parsed_text: str) -> str:
     try:
         prompt = build_jd_summary_prompt(parsed_text)
 
-        raw = ask_ollama(prompt, task="rewrite_generation")
+        raw = ask_ollama(prompt, task="json_structuring")
         raw_json = json.loads(raw)
 
         return raw_json
