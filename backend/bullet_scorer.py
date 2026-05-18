@@ -61,8 +61,7 @@ METRIC_RE = re.compile(
 
 def _normalize(text: str) -> str:
     t = text.lower().strip()
-    t = t.replace("ﬁ", "fi")
-    t = t.replace("node.js", "node.js")
+    t = t.replace("nodejs", "node.js")
     t = t.replace("nextjs", "next.js")
     t = t.replace("reactjs", "react")
     t = t.replace("pixi js", "pixijs")

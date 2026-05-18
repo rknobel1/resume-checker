@@ -1,6 +1,6 @@
 import json
 import re
-from typing import List, Optional, Dict
+from typing import List, Optional
 from models import Suggestion
 from ollama_client import ask_ollama
 
