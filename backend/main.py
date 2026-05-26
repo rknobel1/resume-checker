@@ -153,12 +153,14 @@ async def analyze_pdf(
             raise HTTPException(status_code=400, detail="Could not extract text from PDF.")
         
         resume_json_summary = build_resume_json_summary(parsed_text=resume_text)
-        print(json.dumps(resume_json_summary, indent=2))
+        print("Parsed Resume")
+
         jd_json_summary = build_jd_json_summary(parsed_text=job_description)
         jd_json_summary["job_description"] = job_description
-        print(json.dumps(jd_json_summary, indent=2))
+        print("Parsed Job Description")
 
         analysis = build_analyze_response_from_json(resume_json_summary, jd_json_summary)
+        print("Built analysis")
         
         return analysis
 

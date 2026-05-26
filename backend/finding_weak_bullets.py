@@ -90,17 +90,21 @@ def analyze_weak_bullets(resume_data: dict):
     return weak_bullets, weak_bullet_details
 
 
-def identify_weak_bullets_ai(section: str, header: str, bullets: list[str]) -> AIWeakBulletResponse:
+def identify_weak_bullets_ai(section: str, header: str, details: str, bullets: list[str]) -> AIWeakBulletResponse:
     bullet_text = "\n".join(
         f"{i}. {bullet}"
         for i, bullet in enumerate(bullets)
     )
 
     prompt = f"""
-You are reviewing resume bullets from one {section} entry.
+You are an expert level ATS reviewer.
+Your task is to find weak resume bullets from one {section} entry.
 
 Entry title:
 {header}
+
+Additional information:
+{details}
 
 Bullets:
 {bullet_text}
@@ -153,6 +157,7 @@ def analyze_weak_bullets_with_ai(resume_data: dict):
         grouped_entries.append({
             "section": "experience",
             "header": exp.get("Title", "Experience Entry"),
+            "details": exp.get("Dates", ""),
             "bullets": exp.get("Details", []) or [],
         })
 
@@ -160,6 +165,7 @@ def analyze_weak_bullets_with_ai(resume_data: dict):
         grouped_entries.append({
             "section": "projects",
             "header": project.get("Title", "Project Entry"),
+            "details": project.get("Technologies", ""),
             "bullets": project.get("Details", []) or [],
         })
 
@@ -168,6 +174,7 @@ def analyze_weak_bullets_with_ai(resume_data: dict):
     for entry in grouped_entries:
         section_name = entry.get("section", "experience")
         header = entry.get("header", "Entry")
+        details = entry.get("details", "")
         entry_bullets = [
             b.strip()
             for b in (entry.get("bullets", []) or [])
@@ -177,6 +184,7 @@ def analyze_weak_bullets_with_ai(resume_data: dict):
         ai_result = identify_weak_bullets_ai(
             section=section_name,
             header=header,
+            details=details,
             bullets=entry_bullets,
         )
 
