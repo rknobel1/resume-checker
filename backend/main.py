@@ -9,7 +9,6 @@ from models import (
     AnalyzeResponse,
     PlanModeRequest,
     PlanModeResponse,
-    WeakBullet,
     DebugInfo,
     ParsedProjectEntry,
     ParsedExperienceEntry,
@@ -19,8 +18,8 @@ from models import (
 from scoring import score_resume_against_jd
 from suggestion_engine import plan_mode_reply
 from pdf_utils import extract_text_from_pdf_bytes
-from bullet_scorer import score_bullet
 from build_json_summaries import build_resume_json_summary, build_jd_json_summary
+from finding_weak_bullets import analyze_weak_bullets, analyze_weak_bullets_with_ai
 
 import json
 
@@ -35,80 +34,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-def analyze_weak_bullets(resume_data: dict):
-    weak_bullets = []
-    weak_bullet_details = []
-
-    grouped_entries = []
-
-    for exp in resume_data.get("Experience", []) or []:
-        grouped_entries.append({
-            "section": "experience",
-            "header": exp.get("Title", "Experience Entry"),
-            "bullets": exp.get("Details", []) or [],
-        })
-
-    for project in resume_data.get("Projects", []) or []:
-        grouped_entries.append({
-            "section": "projects",
-            "header": project.get("Title", "Project Entry"),
-            "bullets": project.get("Details", []) or [],
-        })
-
-    bullet_idx = 0
-
-    for entry in grouped_entries:
-        section_name = entry.get("section", "experience")
-        entry_bullets = [
-            b.strip()
-            for b in (entry.get("bullets", []) or [])
-            if isinstance(b, str) and b.strip()
-        ]
-
-        for bullet in entry_bullets:
-            bullet_idx += 1
-            s = score_bullet(bullet, context_bullets=entry_bullets)
-            reasons = []
-
-            if s["score"] < 58 or s.get("fragment_penalty", 0.0) >= 0.15:
-                if s["starts_weak"] >= 1.0:
-                    reasons.append("Starts with a weak phrase")
-                elif s["starts_strong"] == 0.0 and s.get("fragment_penalty", 0.0) >= 0.15:
-                    reasons.append("Reads more like a fragment than an action-focused bullet")
-
-                if s["has_metric"] == 0.0 and s["impact"] == 0.0:
-                    if s.get("has_metric_context", 0.0) >= 1.0:
-                        reasons.append("Result is clearer elsewhere in this role/project; this bullet could stand on its own more")
-                    else:
-                        reasons.append("Could show clearer measurable results or outcome")
-
-                if s["has_tool"] == 0.0:
-                    if s.get("has_tool_context", 0.0) >= 1.0:
-                        reasons.append("Tools are implied elsewhere in this role/project; consider repeating them here for clarity")
-                    else:
-                        reasons.append("Could be more explicit about tools or technologies used")
-
-                if s["ownership"] == 0.0 and s["starts_strong"] == 0.0:
-                    reasons.append("Ownership or direct contribution is not very explicit")
-
-                if s["specificity"] < 0.45:
-                    reasons.append("Bullet is somewhat vague or underspecified")
-
-            if reasons:
-                bullet_id = f"weak-{bullet_idx}"
-                weak_bullets.append(bullet)
-                weak_bullet_details.append(
-                    WeakBullet(
-                        id=bullet_id,
-                        text=bullet,
-                        section=section_name,
-                        reasons=reasons,
-                    )
-                )
-                
-
-    return weak_bullets, weak_bullet_details
 
 def build_parsed_resume_summary(resume_data: dict) -> ParsedResumeSummary:
     def clean_list(items):
@@ -187,7 +112,8 @@ def build_analyze_response_from_json(resume_json_summary: dict, jd_json_summary:
     
     score_result = score_resume_against_jd(resume_json_summary, jd_json_summary)
 
-    weak_bullets, weak_bullet_details = analyze_weak_bullets(resume_json_summary)
+    # weak_bullets, weak_bullet_details = analyze_weak_bullets(resume_json_summary)
+    weak_bullets, weak_bullet_details = analyze_weak_bullets_with_ai(resume_json_summary)
 
     debug = DebugInfo(
         resume_skills=resume_json_summary.get("skills", []),
