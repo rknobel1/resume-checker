@@ -7,6 +7,10 @@ from models import (
 from evidence_scorer import best_match_for_requirement, classify_evidence_strength
 from bullet_scorer import score_bullets
 from embeddings import embed_texts, cosine_similarity
+from pydantic import BaseModel, Field, ValidationError
+from ollama_client import ask_ollama
+
+import json
 import re
 
 
@@ -863,4 +867,147 @@ def score_resume_against_jd(resume_data: Dict, jd_data: Union[Dict, str]) -> Sco
         missing_preferred=missing_preferred,
         strengths=strengths,
         improvement_priorities=improvement_priorities,
+    )
+
+
+class AIRequirementMatch(BaseModel):
+    requirement: str
+    category: str = "skill"
+    importance: str = "required"
+    matched: bool
+    score: float = Field(..., ge=0, le=100)
+    evidence_score: int = Field(..., ge=0, le=5)
+    best_evidence: str | None = None
+    notes: str | None = None
+
+
+class AIScoreBreakdownResponse(BaseModel):
+    overall_score: float = Field(..., ge=0, le=100)
+    required_coverage: float = Field(..., ge=0, le=100)
+    preferred_coverage: float = Field(..., ge=0, le=100)
+    semantic_alignment: float = Field(..., ge=0, le=100)
+    evidence_strength: float = Field(..., ge=0, le=100)
+    bullet_quality: float = Field(..., ge=0, le=100)
+    formatting: float = Field(..., ge=0, le=100)
+    title_alignment: float = Field(..., ge=0, le=100)
+    matched_requirements: list[AIRequirementMatch]
+    missing_required: list[str]
+    missing_preferred: list[str]
+    strengths: list[str]
+    improvement_priorities: list[str]
+
+
+def score_resume_against_jd_ai(
+    resume_data: Dict,
+    jd_data: Union[Dict, str],
+) -> ScoreBreakdown:
+    normalized_resume = normalize_resume_data(resume_data)
+
+    if isinstance(jd_data, dict):
+        jd = jd_summary_to_structured(jd_data)
+        job_description_text = jd_data.get("job_description") or "\n".join(
+            _clean_list([
+                jd_data.get("required_lines"),
+                jd_data.get("preferred_lines"),
+                jd_data.get("other_lines"),
+                jd_data.get("required_skills"),
+                jd_data.get("preferred_skills"),
+            ])
+        )
+    else:
+        job_description_text = jd_data or ""
+        jd = jd_summary_to_structured({
+            "required_lines": [job_description_text],
+            "job_description": job_description_text,
+        })
+
+    requirements_json = [
+        {
+            "text": req.text,
+            "category": req.category,
+            "importance": req.importance,
+        }
+        for req in jd.requirements
+        if not is_work_authorization_requirement(req.text)
+    ]
+
+    prompt = f"""
+You are an expert ATS resume scorer.
+
+Score the resume against the job description.
+
+Return JSON only in this exact shape:
+{{
+  "overall_score": 0,
+  "required_coverage": 0,
+  "preferred_coverage": 0,
+  "semantic_alignment": 0,
+  "evidence_strength": 0,
+  "bullet_quality": 0,
+  "formatting": 0,
+  "title_alignment": 0,
+  "matched_requirements": [
+    {{
+      "requirement": "Python",
+      "category": "skill",
+      "importance": "required",
+      "matched": true,
+      "score": 100,
+      "evidence_score": 5,
+      "best_evidence": "Python listed in skills",
+      "notes": null
+    }}
+  ],
+  "missing_required": [],
+  "missing_preferred": [],
+  "strengths": [],
+  "improvement_priorities": []
+}}
+
+Rules:
+- Scores must be numbers from 0 to 100.
+- evidence_score must be an integer from 0 to 5.
+- Every requirement below must appear exactly once in matched_requirements.
+- Do not invent evidence. best_evidence must quote or closely reference resume content.
+- If no strong evidence exists, matched=false, score=0, evidence_score=0, best_evidence=null.
+- Return JSON only.
+
+Job description:
+{job_description_text}
+
+Structured requirements:
+{json.dumps(requirements_json, indent=2)}
+
+Resume:
+{json.dumps(normalized_resume, indent=2)}
+"""
+
+    raw = ask_ollama(prompt, task="scoring")
+
+    try:
+        data = json.loads(raw)
+        ai = AIScoreBreakdownResponse.model_validate(data)
+    except (json.JSONDecodeError, ValidationError):
+        # Safe fallback so your app still works
+        return score_resume_against_jd(resume_data, jd_data)
+
+    matched_requirements = [
+        RequirementMatch(**match.model_dump())
+        for match in ai.matched_requirements
+    ]
+
+    return ScoreBreakdown(
+        overall_score=ai.overall_score,
+        required_coverage=ai.required_coverage,
+        preferred_coverage=ai.preferred_coverage,
+        semantic_alignment=ai.semantic_alignment,
+        evidence_strength=ai.evidence_strength,
+        bullet_quality=ai.bullet_quality,
+        formatting=ai.formatting,
+        title_alignment=ai.title_alignment,
+        matched_requirements=matched_requirements,
+        missing_required=ai.missing_required,
+        missing_preferred=ai.missing_preferred,
+        strengths=ai.strengths,
+        improvement_priorities=ai.improvement_priorities,
     )

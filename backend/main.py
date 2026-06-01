@@ -15,14 +15,11 @@ from models import (
     ParsedResumeSummary,
 )
 
-from scoring import score_resume_against_jd
+from scoring import score_resume_against_jd, score_resume_against_jd_ai
 from suggestion_engine import plan_mode_reply
 from pdf_utils import extract_text_from_pdf_bytes
 from build_json_summaries import build_resume_json_summary, build_jd_json_summary
 from finding_weak_bullets import analyze_weak_bullets, analyze_weak_bullets_with_ai
-
-import json
-
 
 app = FastAPI(title="Local ATS Resume App")
 
@@ -110,7 +107,8 @@ def build_parsed_resume_summary(resume_data: dict) -> ParsedResumeSummary:
 
 def build_analyze_response_from_json(resume_json_summary: dict, jd_json_summary: dict) -> AnalyzeResponse:
     
-    score_result = score_resume_against_jd(resume_json_summary, jd_json_summary)
+    # score_result = score_resume_against_jd(resume_json_summary, jd_json_summary)
+    score_result = score_resume_against_jd_ai(resume_json_summary, jd_json_summary)
 
     # weak_bullets, weak_bullet_details = analyze_weak_bullets(resume_json_summary)
     weak_bullets, weak_bullet_details = analyze_weak_bullets_with_ai(resume_json_summary)

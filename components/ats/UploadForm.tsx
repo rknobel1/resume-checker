@@ -6,8 +6,12 @@ type UploadFormProps = {
   file: File | null;
   jobDescription: string;
   error: string;
+  scoringMode: "deterministic" | "ai";
+  weakBulletMode: "deterministic" | "ai";
   onFileChange: (file: File | null) => void;
   onJobDescriptionChange: (value: string) => void;
+  onScoringModeChange: (value: "deterministic" | "ai") => void;
+  onWeakBulletModeChange: (value: "deterministic" | "ai") => void;
   onSubmit: (e: React.FormEvent) => void;
 };
 
@@ -15,8 +19,12 @@ export default function UploadForm({
   file,
   jobDescription,
   error,
+  scoringMode,
+  weakBulletMode,
   onFileChange,
   onJobDescriptionChange,
+  onScoringModeChange,
+  onWeakBulletModeChange,
   onSubmit,
 }: UploadFormProps) {
   const [isDragging, setIsDragging] = useState(false);
@@ -153,6 +161,38 @@ export default function UploadForm({
               onChange={(e) => onJobDescriptionChange(e.target.value)}
               placeholder="Paste the job description here..."
             />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-800">
+              Type of Analysis
+            </label>
+
+            <label className="mt-2 flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={scoringMode === "ai"}
+                onChange={(e) =>
+                  onScoringModeChange(e.target.checked ? "ai" : "deterministic")
+                }
+                className="h-4 w-4 rounded border-slate-300"
+              />
+              AI Scoring
+            </label>
+
+            <label className="mt-2 flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={weakBulletMode === "ai"}
+                onChange={(e) =>
+                  onWeakBulletModeChange(
+                    e.target.checked ? "ai" : "deterministic",
+                  )
+                }
+                className="h-4 w-4 rounded border-slate-300"
+              />
+              AI Weak Bullet Analysis
+            </label>
           </div>
 
           {error && (
