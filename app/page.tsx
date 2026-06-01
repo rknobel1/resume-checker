@@ -25,7 +25,7 @@ Experience in Audio engineering, DAWs, recording, or other audio production.`;
 
 export default function HomePage() {
   const [file, setFile] = useState<File | null>(null);
-  const [jobDescription, setJobDescription] = useState(temp);
+  const [jobDescription, setJobDescription] = useState();
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [view, setView] = useState<ViewState>("form");
   const [error, setError] = useState("");
