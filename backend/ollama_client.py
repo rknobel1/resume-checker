@@ -8,6 +8,8 @@ DEFAULT_MODEL = os.getenv("OLLAMA_MODEL_DEFAULT", "qwen2.5:14b-instruct")
 JSON_STRUCTURER_MODEL = os.getenv("OLLAMA_MODEL_JSON", DEFAULT_MODEL)
 REWRITE_MODEL = os.getenv("OLLAMA_MODEL_REWRITE", DEFAULT_MODEL)
 PLAN_MODE_MODEL = os.getenv("OLLAMA_MODEL_PLAN", DEFAULT_MODEL)
+SCORING_MODE_MODEL = os.getenv("OLLAMA_MODEL_SCORING", DEFAULT_MODEL)
+WEAK_BULLET_MODE_MODEL = os.getenv("OLLAMA_MODEL_WEAK_BULLETS", DEFAULT_MODEL)
 
 
 def get_model_for_task(task: Optional[str] = None) -> str:
@@ -17,8 +19,8 @@ def get_model_for_task(task: Optional[str] = None) -> str:
         "json_structuring": JSON_STRUCTURER_MODEL,
         "rewrite_generation": REWRITE_MODEL,
         "plan_mode": PLAN_MODE_MODEL,
-        "scoring": PLAN_MODE_MODEL,
-        "weak_bullets": PLAN_MODE_MODEL
+        "scoring": SCORING_MODE_MODEL,
+        "weak_bullets": WEAK_BULLET_MODE_MODEL
     }
 
     return task_model_map.get(task, DEFAULT_MODEL)
