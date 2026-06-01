@@ -29,11 +29,8 @@ export default function HomePage() {
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [view, setView] = useState<ViewState>("form");
   const [error, setError] = useState("");
-  const [scoringMode, setScoringMode] = useState<"deterministic" | "ai">("ai");
-
-  const [weakBulletMode, setWeakBulletMode] = useState<"deterministic" | "ai">(
-    "ai",
-  );
+  const [scoringModeAI, setScoringMode] = useState<boolean>(true);
+  const [weakBulletModeAI, setWeakBulletMode] = useState<boolean>(true);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -56,8 +53,8 @@ export default function HomePage() {
       const formData = new FormData();
       formData.append("resume_pdf", file);
       formData.append("job_description", jobDescription);
-      formData.append("scoring_mode", scoringMode);
-      formData.append("weak_bullet_mode", weakBulletMode);
+      formData.append("scoring_mode_ai", String(scoringModeAI));
+      formData.append("weak_bullet_mode_ai", String(weakBulletModeAI));
 
       const res = await fetch("http://127.0.0.1:8000/analyze-pdf", {
         method: "POST",
@@ -98,8 +95,8 @@ export default function HomePage() {
               file={file}
               jobDescription={jobDescription}
               error={error}
-              scoringMode={scoringMode}
-              weakBulletMode={weakBulletMode}
+              scoringMode={scoringModeAI}
+              weakBulletMode={weakBulletModeAI}
               onFileChange={setFile}
               onJobDescriptionChange={setJobDescription}
               onScoringModeChange={setScoringMode}

@@ -6,12 +6,12 @@ type UploadFormProps = {
   file: File | null;
   jobDescription: string;
   error: string;
-  scoringMode: "deterministic" | "ai";
-  weakBulletMode: "deterministic" | "ai";
+  scoringMode: boolean;
+  weakBulletMode: boolean;
   onFileChange: (file: File | null) => void;
   onJobDescriptionChange: (value: string) => void;
-  onScoringModeChange: (value: "deterministic" | "ai") => void;
-  onWeakBulletModeChange: (value: "deterministic" | "ai") => void;
+  onScoringModeChange: (value: boolean) => void;
+  onWeakBulletModeChange: (value: boolean) => void;
   onSubmit: (e: React.FormEvent) => void;
 };
 
@@ -171,9 +171,9 @@ export default function UploadForm({
             <label className="mt-2 flex items-center gap-2 text-sm text-slate-700">
               <input
                 type="checkbox"
-                checked={scoringMode === "ai"}
+                checked={scoringMode === true}
                 onChange={(e) =>
-                  onScoringModeChange(e.target.checked ? "ai" : "deterministic")
+                  onScoringModeChange(e.target.checked ? true : false)
                 }
                 className="h-4 w-4 rounded border-slate-300"
               />
@@ -183,11 +183,9 @@ export default function UploadForm({
             <label className="mt-2 flex items-center gap-2 text-sm text-slate-700">
               <input
                 type="checkbox"
-                checked={weakBulletMode === "ai"}
+                checked={weakBulletMode === true}
                 onChange={(e) =>
-                  onWeakBulletModeChange(
-                    e.target.checked ? "ai" : "deterministic",
-                  )
+                  onWeakBulletModeChange(e.target.checked ? true : false)
                 }
                 className="h-4 w-4 rounded border-slate-300"
               />

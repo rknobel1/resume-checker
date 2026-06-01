@@ -141,7 +141,9 @@ def health():
 @app.post("/analyze-pdf", response_model=AnalyzeResponse)
 async def analyze_pdf(
     resume_pdf: UploadFile = File(...),
-    job_description: str = Form(...)
+    job_description: str = Form(...),
+    scoring_mode_ai: bool = Form(True),
+    weak_bullet_mode_ai: bool = Form(True)
 ):
     try:
         pdf_bytes = await resume_pdf.read()
