@@ -138,7 +138,7 @@ Rules:
 - If no bullets are weak, return {{"weak_bullets": []}}.
 """
 
-    raw = ask_ollama(prompt, task="plan_mode")
+    raw = ask_ollama(prompt, task="weak_bullets")
 
     try:
         data = json.loads(raw)

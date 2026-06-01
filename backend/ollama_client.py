@@ -17,6 +17,8 @@ def get_model_for_task(task: Optional[str] = None) -> str:
         "json_structuring": JSON_STRUCTURER_MODEL,
         "rewrite_generation": REWRITE_MODEL,
         "plan_mode": PLAN_MODE_MODEL,
+        "scoring": PLAN_MODE_MODEL,
+        "weak_bullets": PLAN_MODE_MODEL
     }
 
     return task_model_map.get(task, DEFAULT_MODEL)
@@ -27,7 +29,7 @@ def ask_ollama(
     model: Optional[str] = None,
     *,
     task: Optional[str] = None,
-    timeout: int = 120,
+    timeout: int = 180,
 ) -> str:
     selected_model = model or get_model_for_task(task)
 

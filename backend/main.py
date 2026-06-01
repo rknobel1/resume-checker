@@ -105,13 +105,19 @@ def build_parsed_resume_summary(resume_data: dict) -> ParsedResumeSummary:
     )
 
 
-def build_analyze_response_from_json(resume_json_summary: dict, jd_json_summary: dict) -> AnalyzeResponse:
+def build_analyze_response_from_json(resume_json_summary: dict, jd_json_summary: dict, scoring_mode_ai: bool, weak_bullet_mode_ai: bool) -> AnalyzeResponse:
     
-    # score_result = score_resume_against_jd(resume_json_summary, jd_json_summary)
-    score_result = score_resume_against_jd_ai(resume_json_summary, jd_json_summary)
+    if scoring_mode_ai:
+        score_result = score_resume_against_jd_ai(resume_json_summary, jd_json_summary)
+        print("score result with AI")
+    else: 
+        score_result = score_resume_against_jd(resume_json_summary, jd_json_summary)
 
-    # weak_bullets, weak_bullet_details = analyze_weak_bullets(resume_json_summary)
-    weak_bullets, weak_bullet_details = analyze_weak_bullets_with_ai(resume_json_summary)
+    if weak_bullet_mode_ai:
+        weak_bullets, weak_bullet_details = analyze_weak_bullets_with_ai(resume_json_summary)
+        print("Find weak bullets with AI")
+    else:
+        weak_bullets, weak_bullet_details = analyze_weak_bullets(resume_json_summary)
 
     debug = DebugInfo(
         resume_skills=resume_json_summary.get("skills", []),
@@ -159,7 +165,7 @@ async def analyze_pdf(
         jd_json_summary["job_description"] = job_description
         print("Parsed Job Description")
 
-        analysis = build_analyze_response_from_json(resume_json_summary, jd_json_summary)
+        analysis = build_analyze_response_from_json(resume_json_summary, jd_json_summary, scoring_mode_ai, weak_bullet_mode_ai)
         print("Built analysis")
         
         return analysis
