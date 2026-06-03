@@ -8,24 +8,9 @@ import ScoreSidebar from "@/components/ats/ScoreSidebar";
 import UploadForm from "@/components/ats/UploadForm";
 import { AnalyzeResponse, ViewState } from "@/components/ats/types";
 
-const temp = `Full job description
-Qualifications:
-Education:
-Master’s degree in Electrical Engineering, Computer Science, Mathematics, Statistic, Physics, Data Science, Machine Learning, Music Technology or field related to research science
-PhD in Electrical Engineering, Computer Science, Mathematics, Statistic, Physics, Data Science, Machine Learning, Music Technology or field related to research science
-Technical Skills:
-Proficiency in programming languages: Python required; C/C++ or Matlab also preferred
-Proficiency in leveraging frameworks and libraries including: PyTorch, Tensorflow, scikit-learn, NumPy, Matplotlib, etc.
-Proficiency in tools and technologies including: Git/GitHub, Docker, Jupyter Lab, AWS, OnPrem GPU training tools
-Preferred Experience:
-Knowledge or experience with Speech enhancement algorithms
-Knowledge or experience with classical Digital Signal Processing
-Proficiency in developing low latency, embedded-friendly solutions
-Experience in Audio engineering, DAWs, recording, or other audio production.`;
-
 export default function HomePage() {
   const [file, setFile] = useState<File | null>(null);
-  const [jobDescription, setJobDescription] = useState();
+  const [jobDescription, setJobDescription] = useState<string>("");
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [view, setView] = useState<ViewState>("form");
   const [error, setError] = useState("");
