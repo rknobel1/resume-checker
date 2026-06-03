@@ -10,6 +10,11 @@ import {
   ParsedProjectEntry,
   WeakBullet,
 } from "./types";
+import dynamic from "next/dynamic";
+
+const ResumePdfViewer = dynamic(() => import("./ResumePdfViewer"), {
+  ssr: false,
+});
 
 type BulletUiState = {
   currentText: string;
@@ -18,7 +23,7 @@ type BulletUiState = {
   options: string[];
 };
 
-type ResultsTab = "resume" | "analysis";
+type ResultsTab = "resume" | "analysis" | "pdf";
 
 function ParsedProjectList({
   projects,
@@ -221,8 +226,10 @@ function ResumeBullet({
 
 export default function ResultsContent({
   result,
+  resumePdfUrl,
 }: {
   result: AnalyzeResponse;
+  resumePdfUrl: string | null;
 }) {
   const initialBulletState = useMemo(() => {
     const entries: Record<string, BulletUiState> = {};
@@ -322,6 +329,12 @@ export default function ResultsContent({
       <div className="space-y-6">
         <div className="flex flex-wrap gap-3">
           <TabButton
+            active={activeTab === "pdf"}
+            onClick={() => setActiveTab("pdf")}
+          >
+            Uploaded PDF
+          </TabButton>
+          <TabButton
             active={activeTab === "resume"}
             onClick={() => setActiveTab("resume")}
           >
@@ -332,9 +345,19 @@ export default function ResultsContent({
             active={activeTab === "analysis"}
             onClick={() => setActiveTab("analysis")}
           >
-            Analysis
+            Full Analysis
           </TabButton>
         </div>
+
+        {activeTab === "pdf" && (
+          <SectionCard title="Uploaded Resume PDF">
+            {resumePdfUrl ? (
+              <ResumePdfViewer file={resumePdfUrl} />
+            ) : (
+              <p className="text-slate-600">No resume PDF available.</p>
+            )}
+          </SectionCard>
+        )}
 
         {activeTab === "resume" && (
           <>

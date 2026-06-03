@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import LoadingState from "@/components/ats/LoadingState";
 import ResultsContent from "@/components/ats/ResultsContent";
 import ResultsHeader from "@/components/ats/ResultsHeader";
@@ -16,6 +16,19 @@ export default function HomePage() {
   const [error, setError] = useState("");
   const [scoringModeAI, setScoringMode] = useState<boolean>(true);
   const [weakBulletModeAI, setWeakBulletMode] = useState<boolean>(true);
+  const [resumePdfUrl, setResumePdfUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!file) {
+      setResumePdfUrl(null);
+      return;
+    }
+
+    const url = URL.createObjectURL(file);
+    setResumePdfUrl(url);
+
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -103,7 +116,7 @@ export default function HomePage() {
 
               <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
                 <ScoreSidebar result={result} />
-                <ResultsContent result={result} />
+                <ResultsContent result={result} resumePdfUrl={resumePdfUrl} />
               </div>
             </div>
           )}
