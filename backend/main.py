@@ -109,15 +109,17 @@ def build_analyze_response_from_json(resume_json_summary: dict, jd_json_summary:
     
     if scoring_mode_ai:
         score_result = score_resume_against_jd_ai(resume_json_summary, jd_json_summary)
-        print("score result with AI")
+        print("Scoring results with AI")
     else: 
         score_result = score_resume_against_jd(resume_json_summary, jd_json_summary)
+        print("Scoring results deterministically")
 
     if weak_bullet_mode_ai:
         weak_bullets, weak_bullet_details = analyze_weak_bullets_with_ai(resume_json_summary)
-        print("Find weak bullets with AI")
+        print("Finding weak bullets with AI")
     else:
         weak_bullets, weak_bullet_details = analyze_weak_bullets(resume_json_summary)
+        print("Finding weak bullets deterministically")
 
     debug = DebugInfo(
         resume_skills=resume_json_summary.get("skills", []),
