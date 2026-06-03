@@ -97,27 +97,29 @@ def identify_weak_bullets_ai(section: str, header: str, details: str, bullets: l
     )
 
     prompt = f"""
-You are an expert level ATS reviewer.
-Your task is to find weak resume bullets from one {section} entry.
+You are an expert level ATS reviewer. You are currently rating a SINGLE {section} entry.
+Your task is to identify weak bullet points. A weak bullet may:
+    - be vague
+    - lack measurable impact
+    - lack ownership
+    - read like a fragment
+    - fail to explain tools, methods, or outcome
+    - be weaker than the surrounding bullets in the same entry
+
+You should follow this plan of attack:
+    1. Assume that all bullet points are weak unless there is provable evidence that says otherwise.
+    2. Look at the {section} as a whole rather than looking at each bullet point individually. There is no need to double penalize.
+
+This is the {section} entry you are to analyze:
 
 Entry title:
 {header}
 
-Additional information:
+Additional information about {section}:
 {details}
 
-Bullets:
+Bullets to analyze:
 {bullet_text}
-
-Identify only the weak bullets.
-
-A weak bullet may:
-- be vague
-- lack measurable impact
-- lack ownership
-- read like a fragment
-- fail to explain tools, methods, or outcome
-- be weaker than the surrounding bullets in the same entry
 
 Return JSON only in this exact shape:
 
